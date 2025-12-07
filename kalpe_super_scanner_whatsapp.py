@@ -4,7 +4,7 @@ import time
 
 INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
-GROUP_ID = os.getenv("ULTRAMSG_GROUP_ID")   # example: 120363403351030118@g.us
+GROUP_ID = os.getenv("ULTRAMSG_GROUP_ID")
 
 
 def send_whatsapp_message(message):
@@ -13,7 +13,7 @@ def send_whatsapp_message(message):
     payload = {
         "token": TOKEN,
         "groupId": GROUP_ID,
-        "body": message
+        "body": message,
     }
 
     try:
@@ -23,10 +23,10 @@ def send_whatsapp_message(message):
         print("WA ERROR:", e)
 
 
-# Send test message when container starts
+# Send test message
 send_whatsapp_message("⚠️ TEST: WhatsApp scanner connected successfully!")
 
 
-# Keep Railway container alive forever
+# 🚨 IMPORTANT: Keep container alive forever
 while True:
     time.sleep(60)
