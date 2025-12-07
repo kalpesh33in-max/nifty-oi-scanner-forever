@@ -19,3 +19,4 @@ def send_whatsapp_message(message):
         print("WA SENT:", r.json())
     except Exception as e:
         print("WA ERROR:", e)
+send_whatsapp_message("🔔 TEST: WhatsApp scanner connected successfully!")
