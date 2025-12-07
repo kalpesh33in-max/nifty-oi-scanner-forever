@@ -1,30 +1,21 @@
-import time
 import requests
 import os
-from kalpe_super_scanner_whatsapp import send_whatsapp_message
 
-INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID")
-TOKEN = os.environ.get("ULTRAMSG_TOKEN")
-GROUP_ID = os.environ.get("ULTRAMSG_GROUP_ID")
+INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
+TOKEN = os.getenv("ULTRAMSG_TOKEN")
+GROUP_ID = os.getenv("ULTRAMSG_GROUP_ID")
 
-print("Instance ID =", INSTANCE_ID)
-print("Token =", TOKEN)
-print("Group ID =", GROUP_ID)
+def send_whatsapp_message(message):
+    url = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/group"
 
-if not INSTANCE_ID or not TOKEN or not GROUP_ID:
-    print("❌ ERROR: Missing environment variables")
-    exit()
+    payload = {
+        "token": TOKEN,
+        "groupId": GROUP_ID,
+        "body": message
+    }
 
-# ---------------------- SCANNER LOOP ----------------------
-while True:
     try:
-        message = "TEST: Scanner Running Successfully ✔"
-
-        send_whatsapp_message(message)
-        print("Message sent, sleeping...")
-
-        time.sleep(20)  # send every 20 seconds
-
+        r = requests.post(url, json=payload)
+        print("WA SENT:", r.json())
     except Exception as e:
-        print("Main Loop ERROR:", e)
-        time.sleep(5)
+        print("WA ERROR:", e)
