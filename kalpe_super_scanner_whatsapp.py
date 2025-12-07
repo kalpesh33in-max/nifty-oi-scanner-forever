@@ -37,7 +37,6 @@ def run_scanner():
     ATM_RANGE = 450
     COOLDOWN_SEC = 65
 
-    # Base spike filters (you can still tune later)
     SUPER_A = {"SPIKE": 45, "LOTS": 45}
     SUPER_B = {"SPIKE": 80, "LOTS": 75}
 
@@ -51,8 +50,8 @@ def run_scanner():
     }
     session.headers.update(BASE_HEADERS)
 
-    latest = None            # (data, spot, ts)
-    latest_future = None     # dict with future details
+    latest = None
+    latest_future = None
     blocked = False
     last_block = 0
     lock = threading.Lock()
@@ -83,29 +82,23 @@ def run_scanner():
         return t.weekday() < 5 and dtime(9, 15) <= t.time() <= dtime(15, 30)
 
     # -------------------------------
-    # EXPIRY LABEL (Weekly / Monthly)
+    # EXPIRY LABELLING (Weekly / Monthly)
     # -------------------------------
-    def expiry_type(expiry, all_exp):
-        """
-        Return label for option expiry:
-        (Weekly) / (Next Weekly) / (Monthly)
-        """
+    def expiry_type(expiry: str, all_exp):
+        """Return 'Weekly' / 'Next Weekly' / 'Monthly' label."""
         if not all_exp:
             return ""
 
-        # unique sorted dates
         unique_sorted = sorted(
             set(all_exp),
             key=lambda x: datetime.strptime(x, "%d-%b-%Y")
         )
 
         today = datetime.now(IST).date()
-
         valid = [
             e for e in unique_sorted
             if datetime.strptime(e, "%d-%b-%Y").date() >= today
         ]
-
         if not valid:
             return ""
 
@@ -117,7 +110,7 @@ def run_scanner():
             while temp.month == dt.month:
                 temp += timedelta(days=1)
             temp -= timedelta(days=1)
-            while temp.weekday() != 3:
+            while temp.weekday() != 3:  # Thursday
                 temp -= timedelta(days=1)
             return temp.strftime("%d-%b-%Y")
 
@@ -128,36 +121,12 @@ def run_scanner():
                 monthly = e
 
         if expiry == current_week:
-            return "(Weekly)"
+            return "Weekly"
         if expiry == next_week:
-            return "(Next Weekly)"
+            return "Next Weekly"
         if expiry == monthly:
-            return "(Monthly)"
+            return "Monthly"
         return ""
-
-    # -------------------------------
-    # SIZE LABEL FOR LOTS
-    # -------------------------------
-    def size_label(lots: int) -> str:
-        """
-        Classify position size by lots
-        > 50  : Small
-        > 75  : Medium
-        > 100 : High
-        > 150 : Super High
-        > 200 : Extreme
-        """
-        if lots >= 200:
-            return "Extreme"
-        if lots >= 150:
-            return "Super High"
-        if lots >= 100:
-            return "High"
-        if lots >= 75:
-            return "Medium"
-        if lots >= 50:
-            return "Small"
-        return "Tiny"
 
     # -------------------------------
     # FETCH FUTURES
@@ -184,11 +153,11 @@ def run_scanner():
                 key=lambda x: datetime.strptime(x["expiryDate"], "%d-%b-%Y")
             )
 
-            f = futs[0]  # nearest expiry future
+            f = futs[0]
 
             latest_future = {
-                "price": f.get("lastPrice", 0),
-                "prev_price": f.get("prevClose", 0),
+                "price": f.get("lastPrice", 0.0),
+                "prev_price": f.get("prevClose", 0.0),
                 "oi": f.get("openInterest", 0),
                 "prev_oi": f.get("openInterest", 0) - f.get("changeinOpenInterest", 0),
                 "expiry": f.get("expiryDate", "")
@@ -260,7 +229,7 @@ def run_scanner():
             return "Writer Dominant"
         if oi < old_oi and now_p > old_p:
             return "Short Covering"
-        if oi < old_oi and now_p < old_p:
+        if oi < old_oi and now_p < old_oi:
             return "Long Unwinding"
         return "Neutral"
 
@@ -280,6 +249,28 @@ def run_scanner():
         if o < po and p < pp:
             return "Long Unwinding"
         return "Unknown"
+
+    def future_bias_label(ft):
+        if ft in ("Short Build-up", "Long Unwinding"):
+            return "Future Sellers Active"
+        if ft in ("Long Build-up", "Short Cover"):
+            return "Future Buyers Active"
+        return "Future Participants Mixed"
+
+    def lots_band_label(lots_change: int):
+        """Classify future/option lots size."""
+        lots_abs = abs(lots_change)
+        if lots_abs >= 200:
+            return "EXTREME"
+        if lots_abs >= 150:
+            return "Super High"
+        if lots_abs >= 100:
+            return "High"
+        if lots_abs >= 75:
+            return "Medium"
+        if lots_abs >= 50:
+            return "Small"
+        return "Very Small"
 
     # -------------------------------
     # SPIKE SCANNER
@@ -318,22 +309,24 @@ def run_scanner():
             if time.time() - ts > 120:
                 continue
 
-            # all expiries for label
             expiries = [row["expiryDate"] for row in data]
 
             for row in data:
                 strike = row["strikePrice"]
-                expiry = row["expiryDate"]
 
                 if abs(strike - spot) > ATM_RANGE:
                     continue
-
-                opt_exp_label = expiry_type(expiry, expiries)
 
                 for typ in ("CE", "PE"):
                     opt = row.get(typ)
                     if not opt:
                         continue
+
+                    expiry = row["expiryDate"]
+                    exp_lbl = expiry_type(expiry, expiries)
+                    expiry_display = expiry
+                    if exp_lbl:
+                        expiry_display = f"{expiry} ({exp_lbl})"
 
                     key = f"{strike}_{typ}_{expiry}"
 
@@ -341,8 +334,8 @@ def run_scanner():
                     chg = opt["changeinOpenInterest"]
                     lots = abs(chg) // NIFTY_LOT
 
-                    iv = opt.get("impliedVolatility") or 0
-                    price = opt.get("lastPrice") or 0
+                    iv = opt.get("impliedVolatility") or 0.0
+                    price = opt.get("lastPrice") or 0.0
 
                     if key not in hist:
                         hist[key] = {"oi": oi, "iv": iv, "price": price}
@@ -351,9 +344,9 @@ def run_scanner():
                     old = hist[key]
                     old_oi, old_iv, old_price = old["oi"], old["iv"], old["price"]
 
-                    spike = ((oi - old_oi) / old_oi * 100) if old_oi else 0
-                    iv_change = iv - old_iv
-                    ivroc = ((iv - old_iv) / old_iv * 100) if old_iv else 0
+                    spike = ((oi - old_oi) / old_oi * 100) if old_oi else 0.0
+                    ivroc = ((iv - old_iv) / old_iv * 100) if old_iv else 0.0
+                    oi_pct = spike  # same metric: % change from last snapshot
 
                     now_t = time.time()
                     if now_t - cooldown.get(key, 0) < COOLDOWN_SEC:
@@ -362,71 +355,105 @@ def run_scanner():
 
                     trigger = None
                     if spike >= SUPER_B["SPIKE"] and lots >= SUPER_B["LOTS"]:
-                        trigger = "👑 EXTREME SPIKE"
+                        trigger = "EXTREME SPIKE"
                     elif spike >= SUPER_A["SPIKE"] and lots >= SUPER_A["LOTS"]:
-                        trigger = "🔥 SUPER SPIKE"
+                        trigger = "SUPER SPIKE"
 
                     if trigger:
-                        # -------- Future side ----------
-                        ftrend = future_trend(latest_future)
-
-                        if latest_future:
-                            f_price = latest_future["price"]
-                            f_prev = latest_future["prev_price"]
-                            f_oi = latest_future["oi"]
-                            f_prev_oi = latest_future["prev_oi"]
-                            f_expiry = latest_future["expiry"]
-
-                            f_dprice = f_price - f_prev
-                            f_doi = f_oi - f_prev_oi
-                            f_lots = abs(f_doi) // NIFTY_LOT
-                            f_size = size_label(f_lots)
-                        else:
-                            f_price = f_prev = f_oi = f_prev_oi = 0
-                            f_dprice = f_doi = 0
-                            f_lots = 0
-                            f_size = "N/A"
-                            f_expiry = "N/A"
-
-                        # -------- Option trend ----------
+                        # Option + future trends
                         opttrend = option_trend(price, old_price, oi, old_oi)
+                        ftrend = future_trend(latest_future)
+                        fbias = future_bias_label(ftrend)
 
-                        # -------- Combo signal lines ----------
-                        combo_tags = []
+                        # Future numbers (safe defaults)
+                        if latest_future:
+                            fut_price = float(latest_future["price"])
+                            fut_prev_price = float(latest_future["prev_price"])
+                            fut_oi = int(latest_future["oi"])
+                            fut_prev_oi = int(latest_future["prev_oi"])
+                            fut_expiry = latest_future.get("expiry", "")
+                        else:
+                            fut_price = fut_prev_price = 0.0
+                            fut_oi = fut_prev_oi = 0
+                            fut_expiry = "N/A"
 
-                        future_buy = ftrend in ("Long Build-up", "Short Cover")
-                        future_sell = ftrend in ("Short Build-up", "Long Unwinding")
+                        fut_dprice = fut_price - fut_prev_price
+                        fut_doi = fut_oi - fut_prev_oi
+                        fut_oi_pct = ((fut_oi - fut_prev_oi) / fut_prev_oi * 100) if fut_prev_oi else 0.0
+                        fut_lots = fut_doi // NIFTY_LOT
+                        fut_lots_label = lots_band_label(fut_lots)
 
-                        # call buy + future sell
-                        if typ == "CE" and opttrend in ("Buyer Dominant", "Short Covering") and future_sell:
-                            combo_tags.append("CALL BUY + FUTURE SELL")
+                        lots_label = lots_band_label(lots)
 
-                        # put buy + future buy
-                        if typ == "PE" and opttrend in ("Buyer Dominant", "Short Covering") and future_buy:
-                            combo_tags.append("PUT BUY + FUTURE BUY")
+                        # Header colour: green for call/put buying, red for selling side
+                        if "Buyer" in opttrend:
+                            header_emoji = "🟢"
+                        elif "Writer" in opttrend or "Unwinding" in opttrend or "Short" in opttrend:
+                            header_emoji = "🔴"
+                        else:
+                            header_emoji = "🟡"
 
-                        # call / put write
-                        if typ == "CE" and opttrend == "Writer Dominant":
-                            combo_tags.append("CALL WRITE")
-                        if typ == "PE" and opttrend == "Writer Dominant":
-                            combo_tags.append("PUT WRITE")
+                        symbol_line = f"NIFTY {strike} {typ}"
 
-                        combo_text = " | ".join(combo_tags) if combo_tags else "No strong combo"
+                        # Column widths for nice alignment
+                        COL1 = 30
+                        COL2 = 28
+                        COL3 = 33
 
-                        opt_size = size_label(lots)
+                        def pad(s, width):
+                            return s.ljust(width)
+
+                        # Build 3-column table (like your Excel screenshot)
+                        line1 = (
+                            pad(f"Expiry: {expiry_display}", COL1) +
+                            "| " + pad(f"OI: {oi:,}", COL2) +
+                            "| " + f"Future Price: {fut_price:,.2f}"
+                        )
+                        line2 = (
+                            pad(symbol_line, COL1) +
+                            "| " + pad(f"ΔOI: {chg:+,}", COL2) +
+                            "| " + f"Fut OI: {fut_oi:,} (ΔOI {fut_doi:+,})"
+                        )
+                        line3 = (
+                            pad(f"Price: ₹{price:.2f}", COL1) +
+                            "| " + pad(f"OI %: {oi_pct:+.1f}%", COL2) +
+                            "| " + f"OI %: {fut_oi_pct:+.1f}%"
+                        )
+                        line4 = (
+                            pad(f"Lots: {lots} ({lots_label})", COL1) +
+                            "| " + pad(f"IV: {iv:.2f}%", COL2) +
+                            "| " + f"OI Lots: {fut_lots} → {fut_lots_label}"
+                        )
+                        line5 = (
+                            pad(opttrend, COL1) +
+                            "| " + pad(f"IV ROC: {ivroc:+.1f}%", COL2) +
+                            "| " + f"Trend: {ftrend}"
+                        )
+                        line6 = (
+                            pad("", COL1) +
+                            "| " + pad("", COL2) +
+                            "| " + fbias
+                        )
+
+                        header_title = f"{trigger} — {typ} {opttrend.upper()}"
+                        table_header = (
+                            f"{header_emoji} EXTREME SPIKE".ljust(COL1) +
+                            "| " + "📊 OPTION TREND".ljust(COL2) +
+                            "| " + "📉 FUTURE DATA"
+                        )
+                        sep_line = "-" * (COL1 + COL2 + COL3 + 4)
 
                         msg = (
-                            f"{trigger}\n\n"
-                            f"Option: NIFTY {strike} {typ}  Exp: {expiry} {opt_exp_label}\n"
-                            f"Future: Exp: {f_expiry}\n\n"
-                            f"Option OI: {oi:,}  (ΔOI: {chg:+,} | {spike:+.1f}% | Lots: {lots} → {opt_size})\n"
-                            f"IV: {iv:.2f}%  (ΔIV: {iv_change:+.2f} | IV ROC: {ivroc:+.1f}%)\n\n"
-                            f"Future Price: {f_price:.2f}  (Δ: {f_dprice:+.2f})\n"
-                            f"Future OI: {f_oi:,}  (ΔOI: {f_doi:+,} | Lots: {f_lots} → {f_size})\n\n"
-                            f"Option Trend: {opttrend}\n"
-                            f"Future Trend: {ftrend}\n"
-                            f"Combo Signal: {combo_text}\n\n"
-                            f"Spot: {spot}\n"
+                            f"{header_emoji} *{header_title}*\n\n"
+                            f"{table_header}\n"
+                            f"{sep_line}\n"
+                            f"{line1}\n"
+                            f"{line2}\n"
+                            f"{line3}\n"
+                            f"{line4}\n"
+                            f"{line5}\n"
+                            f"{line6}\n"
+                            f"\nSpot: {spot}   •   Fut Expiry: {fut_expiry}\n"
                             f"Time: {datetime.now(IST).strftime('%H:%M:%S')} IST"
                         )
 
