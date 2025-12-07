@@ -1,14 +1,14 @@
 {
   "build": {
     "builder": "pip",
-    "watchPatterns": ["*.py", "requirements.txt"]
+    "watchPatterns": [".py", "requirements.txt"]
   },
   "deploy": {
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 100
+    "restartPolicyMaxRetries": 3,
+    "healthcheckPath": "/health",  // Add a simple /health endpoint if possible
+    "healthcheckTimeout": 30
   },
   "serviceType": "worker",
-  "startCommand": "python3 kalpe_super_scanner_whatsapp.py"
+  "startCommand": "python main_app.py"
 }
