@@ -37,6 +37,7 @@ def run_scanner():
     ATM_RANGE = 450
     COOLDOWN_SEC = 65
 
+    # Base spike filters (you can still tune later)
     SUPER_A = {"SPIKE": 45, "LOTS": 45}
     SUPER_B = {"SPIKE": 80, "LOTS": 75}
 
@@ -50,8 +51,8 @@ def run_scanner():
     }
     session.headers.update(BASE_HEADERS)
 
-    latest = None
-    latest_future = None
+    latest = None            # (data, spot, ts)
+    latest_future = None     # dict with future details
     blocked = False
     last_block = 0
     lock = threading.Lock()
@@ -74,12 +75,89 @@ def run_scanner():
                 print("[NSE] Session refreshed OK")
             else:
                 print("[NSE] Refresh failed:", r.status_code)
-        except:
-            pass
+        except Exception as e:
+            print("[NSE] Refresh error:", e)
 
     def is_market_open():
         t = datetime.now(IST)
         return t.weekday() < 5 and dtime(9, 15) <= t.time() <= dtime(15, 30)
+
+    # -------------------------------
+    # EXPIRY LABEL (Weekly / Monthly)
+    # -------------------------------
+    def expiry_type(expiry, all_exp):
+        """
+        Return label for option expiry:
+        (Weekly) / (Next Weekly) / (Monthly)
+        """
+        if not all_exp:
+            return ""
+
+        # unique sorted dates
+        unique_sorted = sorted(
+            set(all_exp),
+            key=lambda x: datetime.strptime(x, "%d-%b-%Y")
+        )
+
+        today = datetime.now(IST).date()
+
+        valid = [
+            e for e in unique_sorted
+            if datetime.strptime(e, "%d-%b-%Y").date() >= today
+        ]
+
+        if not valid:
+            return ""
+
+        current_week = valid[0]
+        next_week = valid[1] if len(valid) > 1 else None
+
+        def last_thursday(dt):
+            temp = datetime(dt.year, dt.month, 28)
+            while temp.month == dt.month:
+                temp += timedelta(days=1)
+            temp -= timedelta(days=1)
+            while temp.weekday() != 3:
+                temp -= timedelta(days=1)
+            return temp.strftime("%d-%b-%Y")
+
+        monthly = None
+        for e in valid:
+            dt = datetime.strptime(e, "%d-%b-%Y")
+            if e == last_thursday(dt):
+                monthly = e
+
+        if expiry == current_week:
+            return "(Weekly)"
+        if expiry == next_week:
+            return "(Next Weekly)"
+        if expiry == monthly:
+            return "(Monthly)"
+        return ""
+
+    # -------------------------------
+    # SIZE LABEL FOR LOTS
+    # -------------------------------
+    def size_label(lots: int) -> str:
+        """
+        Classify position size by lots
+        > 50  : Small
+        > 75  : Medium
+        > 100 : High
+        > 150 : Super High
+        > 200 : Extreme
+        """
+        if lots >= 200:
+            return "Extreme"
+        if lots >= 150:
+            return "Super High"
+        if lots >= 100:
+            return "High"
+        if lots >= 75:
+            return "Medium"
+        if lots >= 50:
+            return "Small"
+        return "Tiny"
 
     # -------------------------------
     # FETCH FUTURES
@@ -106,7 +184,7 @@ def run_scanner():
                 key=lambda x: datetime.strptime(x["expiryDate"], "%d-%b-%Y")
             )
 
-            f = futs[0]
+            f = futs[0]  # nearest expiry future
 
             latest_future = {
                 "price": f.get("lastPrice", 0),
@@ -240,18 +318,23 @@ def run_scanner():
             if time.time() - ts > 120:
                 continue
 
+            # all expiries for label
+            expiries = [row["expiryDate"] for row in data]
+
             for row in data:
                 strike = row["strikePrice"]
+                expiry = row["expiryDate"]
 
                 if abs(strike - spot) > ATM_RANGE:
                     continue
+
+                opt_exp_label = expiry_type(expiry, expiries)
 
                 for typ in ("CE", "PE"):
                     opt = row.get(typ)
                     if not opt:
                         continue
 
-                    expiry = row["expiryDate"]
                     key = f"{strike}_{typ}_{expiry}"
 
                     oi = opt["openInterest"]
@@ -269,6 +352,7 @@ def run_scanner():
                     old_oi, old_iv, old_price = old["oi"], old["iv"], old["price"]
 
                     spike = ((oi - old_oi) / old_oi * 100) if old_oi else 0
+                    iv_change = iv - old_iv
                     ivroc = ((iv - old_iv) / old_iv * 100) if old_iv else 0
 
                     now_t = time.time()
@@ -283,16 +367,65 @@ def run_scanner():
                         trigger = "🔥 SUPER SPIKE"
 
                     if trigger:
+                        # -------- Future side ----------
                         ftrend = future_trend(latest_future)
+
+                        if latest_future:
+                            f_price = latest_future["price"]
+                            f_prev = latest_future["prev_price"]
+                            f_oi = latest_future["oi"]
+                            f_prev_oi = latest_future["prev_oi"]
+                            f_expiry = latest_future["expiry"]
+
+                            f_dprice = f_price - f_prev
+                            f_doi = f_oi - f_prev_oi
+                            f_lots = abs(f_doi) // NIFTY_LOT
+                            f_size = size_label(f_lots)
+                        else:
+                            f_price = f_prev = f_oi = f_prev_oi = 0
+                            f_dprice = f_doi = 0
+                            f_lots = 0
+                            f_size = "N/A"
+                            f_expiry = "N/A"
+
+                        # -------- Option trend ----------
                         opttrend = option_trend(price, old_price, oi, old_oi)
+
+                        # -------- Combo signal lines ----------
+                        combo_tags = []
+
+                        future_buy = ftrend in ("Long Build-up", "Short Cover")
+                        future_sell = ftrend in ("Short Build-up", "Long Unwinding")
+
+                        # call buy + future sell
+                        if typ == "CE" and opttrend in ("Buyer Dominant", "Short Covering") and future_sell:
+                            combo_tags.append("CALL BUY + FUTURE SELL")
+
+                        # put buy + future buy
+                        if typ == "PE" and opttrend in ("Buyer Dominant", "Short Covering") and future_buy:
+                            combo_tags.append("PUT BUY + FUTURE BUY")
+
+                        # call / put write
+                        if typ == "CE" and opttrend == "Writer Dominant":
+                            combo_tags.append("CALL WRITE")
+                        if typ == "PE" and opttrend == "Writer Dominant":
+                            combo_tags.append("PUT WRITE")
+
+                        combo_text = " | ".join(combo_tags) if combo_tags else "No strong combo"
+
+                        opt_size = size_label(lots)
 
                         msg = (
                             f"{trigger}\n\n"
-                            f"Strike: {strike} {typ}\n"
-                            f"Price: ₹{price} | OI: {oi:,} | ΔOI: {chg:+,} | Lots: {lots}\n"
-                            f"IV: {iv:.2f}% | IV ROC: {ivroc:+.1f}%\n\n"
+                            f"Option: NIFTY {strike} {typ}  Exp: {expiry} {opt_exp_label}\n"
+                            f"Future: Exp: {f_expiry}\n\n"
+                            f"Option OI: {oi:,}  (ΔOI: {chg:+,} | {spike:+.1f}% | Lots: {lots} → {opt_size})\n"
+                            f"IV: {iv:.2f}%  (ΔIV: {iv_change:+.2f} | IV ROC: {ivroc:+.1f}%)\n\n"
+                            f"Future Price: {f_price:.2f}  (Δ: {f_dprice:+.2f})\n"
+                            f"Future OI: {f_oi:,}  (ΔOI: {f_doi:+,} | Lots: {f_lots} → {f_size})\n\n"
                             f"Option Trend: {opttrend}\n"
-                            f"Future Trend: {ftrend}\n\n"
+                            f"Future Trend: {ftrend}\n"
+                            f"Combo Signal: {combo_text}\n\n"
                             f"Spot: {spot}\n"
                             f"Time: {datetime.now(IST).strftime('%H:%M:%S')} IST"
                         )
