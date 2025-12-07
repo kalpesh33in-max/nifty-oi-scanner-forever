@@ -19,4 +19,14 @@ def send_whatsapp_message(message):
         print("WA SENT:", r.json())
     except Exception as e:
         print("WA ERROR:", e)
-send_whatsapp_message("🔔 TEST: WhatsApp scanner connected successfully!")
+
+# --------------------------
+# MAIN ENTRY POINT
+# --------------------------
+if __name__ == "__main__":
+    send_whatsapp_message("⚠️ TEST: WhatsApp scanner connected successfully!")
+
+    # Keep container alive forever
+    import time
+    while True:
+        time.sleep(60)
