@@ -4,7 +4,7 @@ import time
 
 INSTANCE_ID = os.getenv("ULTRAMSG_INSTANCE_ID")
 TOKEN = os.getenv("ULTRAMSG_TOKEN")
-GROUP_ID = os.getenv("ULTRAMSG_GROUP_ID")   # example: 120363403351030118@g.us
+GROUP_ID = os.getenv("ULTRAMSG_GROUP_ID")
 
 
 def send_whatsapp_message(message):
@@ -27,6 +27,6 @@ def send_whatsapp_message(message):
 send_whatsapp_message("⚠️ TEST: WhatsApp Scanner Connected Successfully!")
 
 
-# Keep container alive forever
+# Keep container alive
 while True:
     time.sleep(60)
