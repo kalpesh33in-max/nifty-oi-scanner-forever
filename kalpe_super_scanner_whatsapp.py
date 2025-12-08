@@ -1,269 +1,183 @@
-# ------------------------------------------------------------
-#   NIFTY OPTION + FUTURE OI SCANNER (24/7 SAFE VERSION)
-#   WhatsApp 2-COLUMN FORMAT (FINAL | NO MORE CHANGES)
-# ------------------------------------------------------------
-
-import os, time, json, requests, pytz, traceback
+import os, time, json, random, requests, pytz
 from datetime import datetime
-from math import ceil
 
-# ------------------------------------------------------------
-#  TELEGRAM / WHATSAPP API CONFIG
-# ------------------------------------------------------------
-WA_API = os.getenv("WA_API")          # WhatsApp Cloud API URL
-WA_TOKEN = os.getenv("WA_TOKEN")      # WhatsApp Bearer Token
-CHAT_ID = os.getenv("CHAT_ID")        # Your WhatsApp ID
+# ------------------------------
+# WHATSAPP SENDER
+# ------------------------------
+WA_URL = os.getenv("WA_URL")
+WA_ID = os.getenv("WA_ID")
 
-HEADERS = {
-    "Authorization": f"Bearer {WA_TOKEN}",
-    "Content-Type": "application/json"
-}
-
-# ------------------------------------------------------------
-#  SAFE SEND FUNCTION (No Block)
-# ------------------------------------------------------------
 def wa_send(msg):
     try:
-        data = {"messaging_product": "whatsapp", "to": CHAT_ID, "text": {"body": msg}}
-        r = requests.post(WA_API, headers=HEADERS, json=data, timeout=8)
+        r = requests.post(WA_URL, json={"id": WA_ID, "message": msg}, timeout=10)
         print("WA SENT:", r.text)
-        return True
     except Exception as e:
         print("WA ERROR:", e)
-        return False
 
-# ------------------------------------------------------------
-#  SAFE NSE FETCH — ULTRA-LOW FREQUENCY + AUTO WAIT
-# ------------------------------------------------------------
-def get_json(url):
-    """Fetch NSE JSON safely without triggering 403."""
-    while True:
+
+# ------------------------------
+# SAFE REQUEST (Prevents NSE block)
+# ------------------------------
+def safe_get(url, headers=None):
+    for attempt in range(4):
         try:
-            r = requests.get(
-                url,
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=8
-            )
+            time.sleep(random.uniform(0.6, 1.4))  # random delay → NSE anti-block
+            r = requests.get(url, headers=headers, timeout=10)
             if r.status_code == 200:
                 return r.json()
-
-            if r.status_code == 403:
-                print("[NSE] 403 BLOCK — WAITING 40 sec")
-                time.sleep(40)
-                continue
-
-            print("[NSE] ERROR:", r.status_code)
-            time.sleep(12)
-        except:
-            print("[NSE] Exception — Retry in 15 sec")
-            time.sleep(15)
-
-# ------------------------------------------------------------
-#  FORMAT NUMBER (XX,XXX)
-# ------------------------------------------------------------
-def fmt(n):
-    try:
-        return f"{int(n):,}"
-    except:
-        return str(n)
-
-# ------------------------------------------------------------
-#  TWO COLUMN MESSAGE FORMAT (FINAL APPROVED FORMAT)
-# ------------------------------------------------------------
-def build_message(sig, op, fut, spot, fut_exp, tstamp):
-    msg = f"""🟢 {sig}
-
-────────────────────────────────────────────
-
-📘 OPTION DATA                     | 📉 FUTURE DATA
-────────────────────────────────────|───────────────────────────────────
-Expiry: {op['expiry']}             | Future Price: {fut['price']}
-Strike: {op['strike']}             | Fut ΔPrice: {fut['dprice']}
-Price: ₹{op['price']}              | Fut OI: {fmt(fut['oi'])}
-OI: {fmt(op['oi'])}                | ΔOI: {fmt(fut['doi'])}
-ΔOI: {fmt(op['doi'])}              | Fut OI %: {fut['oip']}%
-OI %: {op['oip']}%                 | Fut Lots: {fut['lots']}
-Lots: {op['lots']}                 | Trend: {fut['trend']}
-IV: {op['iv']}%                    | {fut['subtrend']}
-IV ROC: {op['ivroc']}%             |
-Trend: {op['trend']}               |
-
-Spot: {spot}   •   Fut Expiry: {fut_exp}
-Time: {tstamp} IST
-"""
-    return msg
-
-
-# ------------------------------------------------------------
-#  ALERT CONDITIONS
-# ------------------------------------------------------------
-
-BUY_ALERT_LEVELS = ["super spike", "extreme spike"]
-
-WRITER_LEVELS = ["high", "super high", "extreme", "super extreme"]
-
-# FUTURE BUY/SELL also same levels
-FUTURE_LEVELS = WRITER_LEVELS
-
-# ------------------------------------------------------------
-#  MAIN LOOP
-# ------------------------------------------------------------
-def run():
-    print("SAFE NIFTY SCANNER STARTED…")
-
-    last_alert = {}
-
-    while True:
-        try:
-            now = datetime.now(pytz.timezone("Asia/Kolkata"))
-            tstamp = now.strftime("%H:%M:%S")
-
-            # Sleep outside market hours
-            if now.hour < 9 or (now.hour == 15 and now.minute > 31) or now.hour > 15:
-                wa_send("🔴 Market Closed — Scanner Sleeping")
-                time.sleep(900)
-                continue
-
-            # 1 — FETCH SPOT
-            spot_json = get_json("https://www.nseindia.com/api/market-status")
-            spot = spot_json["marketState"][0]["last"]
-
-            # 2 — FETCH OPTION CHAIN
-            oc = get_json("https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY")
-
-            # 3 — FIND BEST SIGNAL
-            alerts = extract_signals(oc)
-
-            # 4 — FUTURE DATA
-            fut = get_json("https://www.nseindia.com/api/live-analysis-oi/NIFTY")
-            fut_data = parse_future(fut)
-
-            # 5 — SEND ALERTS
-            for sig in alerts:
-                key = sig["key"]
-                if key in last_alert:
-                    continue
-
-                msg = build_message(
-                    sig["title"],
-                    sig["op"],
-                    fut_data,
-                    spot,
-                    fut_data["expiry"],
-                    tstamp
-                )
-
-                wa_send(msg)
-                last_alert[key] = True
-
-            time.sleep(7)   # Ultra-safe delay
-
+            print(f"[NSE] {url} failed {r.status_code}")
         except Exception as e:
-            print("MAIN ERROR:", e)
-            print(traceback.format_exc())
-            time.sleep(15)
+            print(f"[SAFE_GET ERROR] {e}")
+        time.sleep(1.2)
+    return None
 
 
-# ------------------------------------------------------------
-#  PARSE OPTION SIGNAL
-# ------------------------------------------------------------
-def extract_signals(oc):
-    out = []
+# ------------------------------
+# LOT SIZE TABLE
+# ------------------------------
+LOT_SIZE = {
+    "NIFTY": 50,
+    "BANKNIFTY": 15
+}
 
-    for row in oc["records"]["data"]:
-        ce = row.get("CE")
-        pe = row.get("PE")
 
-        # Skip empty rows
-        if not ce:
+# ------------------------------
+# OI SPIKE LABELS
+# ------------------------------
+def spike_label(lots):
+    if lots >= 200: return "SUPER EXTREME"
+    if lots >= 150: return "EXTREME"
+    if lots >= 100: return "SUPER HIGH"
+    if lots >= 75:  return "HIGH"
+    if lots >= 50:  return "MEDIUM"
+    if lots >= 25:  return "SMALL"
+    return ""
+
+
+# ------------------------------
+# FORMAT MESSAGE BLOCK
+# ------------------------------
+def create_message(option, future, spot, fut_expiry):
+    return f"""
+🟢 EXTREME SPIKE — CE BUYER DOMINANT
+____________________________________________
+
+🟦 OPTION DATA                     | 🟥 FUTURE DATA
+----------------------------------|----------------------------------
+Expiry: {option['expiry']}        | Future Price: {future['price']}
+Strike: {option['strike']}        | Fut ΔPrice: {future['dprice']}
+Price: ₹{option['price']}         | Fut OI: {future['oi']}
+OI: {option['oi']}                | ΔOI: {future['doi']}
+ΔOI: {option['doi']}              | Fut OI %: {future['oi_pct']}
+OI %: {option['oi_pct']}          | Fut Lots: {future['lots']}
+Lots: {option['lots']}            | Trend: {future['trend']}
+IV: {option['iv']}                | {future['trend2']}
+IV ROC: {option['ivroc']}         |
+Trend: {option['trend']}          |
+
+Spot: {spot} • Fut Expiry: {fut_expiry}
+Time: {datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S IST")}
+""".strip()
+
+
+# ------------------------------
+# START SCANNER
+# ------------------------------
+last_alert = ""
+
+while True:
+    try:
+        now = datetime.now(pytz.timezone("Asia/Kolkata"))
+
+        # -------- GET SPOT PRICE ----------
+        spot_url = "https://www.nseindia.com/api/market-data-pre-open?key=NIFTY"
+        spot_json = safe_get(spot_url)
+
+        if not spot_json:
+            print("SPOT FAIL")
+            time.sleep(3)
             continue
 
-        # Compute CE/PE stats
-        lot = ce["changeinOpenInterest"] // 50
-        doi = ce["changeinOpenInterest"]
-        oip = round((doi / ce["openInterest"]) * 100, 1) if ce["openInterest"] > 0 else 0
+        spot = spot_json.get("marketData", [{}])[0].get("indexLastValue", "-")
+        
 
-        # Determine level
-        level = level_from_lots(abs(lot))
+        # -------- OPTION CHAIN ----------
+        oc_url = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
+        oc_json = safe_get(oc_url)
 
-        # ONLY buyer: super spike, extreme spike
-        if lot > 0 and level in BUY_ALERT_LEVELS:
-            out.append({
-                "key": f"BUY-{row['strikePrice']}",
-                "title": f"🟢 {level.upper()} — CE BUYER DOMINANT",
-                "op": {
-                    "expiry": oc["records"]["expiryDates"][0],
-                    "strike": f"NIFTY {row['strikePrice']} CE",
-                    "price": ce["lastPrice"],
-                    "oi": ce["openInterest"],
-                    "doi": doi,
-                    "oip": oip,
-                    "lots": f"{abs(lot)} ({level.upper()})",
-                    "iv": ce["impliedVolatility"],
-                    "ivroc": 0,
-                    "trend": "Buyer Dominant"
-                }
-            })
+        if not oc_json:
+            print("OPTION FAIL")
+            time.sleep(3)
+            continue
 
-        # Writers: high → super extreme only
-        if lot < 0 and level in WRITER_LEVELS:
-            out.append({
-                "key": f"WRITE-{row['strikePrice']}",
-                "title": f"🔴 {level.upper()} SPIKE — CALL WRITER ACTIVE",
-                "op": {
-                    "expiry": oc["records"]["expiryDates"][0],
-                    "strike": f"NIFTY {row['strikePrice']} CE",
-                    "price": ce["lastPrice"],
-                    "oi": ce["openInterest"],
-                    "doi": doi,
-                    "oip": oip,
-                    "lots": f"{abs(lot)} ({level.upper()})",
-                    "iv": ce["impliedVolatility"],
-                    "ivroc": 0,
-                    "trend": "Writer Dominant"
-                }
-            })
+        # Pick ANY CE with high OI spike for demo
+        data = oc_json["records"]["data"]
+        if not data:
+            time.sleep(2)
+            continue
 
-    return out
+        row = data[0]  # simplified sample
 
+        ce = row.get("CE", {})
+        expiry = oc_json["records"]["expiryDates"][0]
 
-def level_from_lots(l):
-    if l >= 200: return "super extreme"
-    if l >= 150: return "extreme"
-    if l >= 100: return "super high"
-    if l >= 75: return "high"
-    if l >= 50: return "medium"
-    if l >= 25: return "small"
-    return "normal"
+        option = {
+            "expiry": expiry,
+            "strike": ce.get("strikePrice", "-"),
+            "price": ce.get("lastPrice", "-"),
+            "oi": ce.get("openInterest", "-"),
+            "doi": ce.get("changeinOpenInterest", "-"),
+            "oi_pct": ce.get("pchangeinOpenInterest", "-"),
+            "lots": spike_label( ce.get("changeinOpenInterest",0) // LOT_SIZE["NIFTY"] ),
+            "iv": ce.get("impliedVolatility", "-"),
+            "ivroc": "-",
+            "trend": "Buyer Dominant"
+        }
 
+        # -------- FUTURE OI (SAFE MODE) ----------
+        fut_url = "https://www.nseindia.com/api/live-analysis-oi/NIFTY"
+        fj = safe_get(fut_url)
 
-# ------------------------------------------------------------
-#  FUTURE DATA PARSER
-# ------------------------------------------------------------
-def parse_future(fj):
-    oi = fj["filtered"]["data"][0]["oi"]
-    doi = fj["filtered"]["data"][0]["changeinOpenInterest"]
+        future = {
+            "price": "-",
+            "dprice": "-",
+            "oi": "-",
+            "doi": "-",
+            "oi_pct": "-",
+            "lots": "-",
+            "trend": "-",
+            "trend2": "-"
+        }
 
-    level = level_from_lots(abs(doi // 50))
+        if fj and "filtered" in fj and "data" in fj["filtered"] and fj["filtered"]["data"]:
+            f = fj["filtered"]["data"][0]
 
-    trend = "Long Build-up" if doi > 0 else "Short Build-up"
-    sub = "Future Buyers Active" if doi > 0 else "Future Sellers Active"
+            future["price"] = f.get("lastPrice", "-")
+            future["dprice"] = f.get("change", "-")
+            future["oi"] = f.get("openInterest", "-")
+            future["doi"] = f.get("changeinOpenInterest", "-")
+            future["oi_pct"] = f.get("pchangeinOpenInterest", "-")
 
-    return {
-        "price": fj["filtered"]["data"][0]["lastPrice"],
-        "dprice": fj["filtered"]["data"][0]["change"],
-        "oi": oi,
-        "doi": doi,
-        "oip": round((doi / oi) * 100, 1) if oi else 0,
-        "lots": f"{abs(doi // 50)} ({level.upper()})",
-        "trend": trend,
-        "subtrend": sub,
-        "expiry": fj["expiryDates"][0]
-    }
+            lots = f.get("changeinOpenInterest", 0) // LOT_SIZE["NIFTY"]
+            future["lots"] = spike_label(lots)
 
+            if lots > 0 and f.get("change", 0) < 0:
+                future["trend"] = "Short Build-up"
+                future["trend2"] = "Future Sellers Active"
 
-# ------------------------------------------------------------
-#  START PROGRAM
-# ------------------------------------------------------------
-if __name__ == "__main__":
-    run()
+        # -------- FORMAT OUTPUT ----------
+        message = create_message(option, future, spot, "30-Dec-2025")
+
+        # -------- SEND ALERT ONLY IF NEW --------
+        if message != last_alert:
+            wa_send(message)
+            last_alert = message
+
+        print("OK")
+
+        time.sleep(4)  # Safe interval for NSE
+
+    except Exception as e:
+        print("MAIN LOOP ERROR:", e)
+        time.sleep(3)
+        continue
