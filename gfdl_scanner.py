@@ -3,8 +3,10 @@ import websockets
 import json
 import time
 import requests
+import sys
 from datetime import datetime
 import re
+import functools
 import os
 
 # ==============================================================================
@@ -12,7 +14,7 @@ import os
 # ==============================================================================
 
 # --- API and Connection ---
-WSS_URL = "wss://test.lisuns.com:4576/"
+WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 API_KEY = os.environ.get("API_KEY")
 
 # --- WhatsApp Alerting (UltraMSG) ---
@@ -21,11 +23,6 @@ ULTRAMSG_TOKEN = os.environ.get("ULTRAMSG_TOKEN")
 ULTRAMSG_GROUP_ID = os.environ.get("ULTRAMSG_GROUP_ID")
 ULTRAMSG_API_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
 
-# Check for missing environment variables
-if not all([API_KEY, ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, ULTRAMSG_GROUP_ID]):
-    print("FATAL ERROR: One or more environment variables are not set.")
-    print("Please set API_KEY, ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, and ULTRAMSG_GROUP_ID.")
-    exit()
 # --- Symbol List (Options Only) ---
 SYMBOLS_TO_MONITOR = [
     "NIFTY30DEC2526200CE", "NIFTY30DEC2526200PE",
@@ -315,6 +312,3 @@ if __name__ == "__main__":
         error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
         print(error_message)
         asyncio.run(send_whatsapp(error_message))
-
-
-
