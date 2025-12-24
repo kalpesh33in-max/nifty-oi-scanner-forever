@@ -26,14 +26,7 @@ if not all([API_KEY, ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, ULTRAMSG_GROUP_ID]):
     print("FATAL ERROR: One or more environment variables are not set.")
     print("Please set API_KEY, ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, and ULTRAMSG_GROUP_ID.")
     exit()
-
-# Debug flags
-# Set to True to print Echo (heartbeat) messages. You can also enable
-# at runtime by passing `--debug-echo` on the command line.
-DEBUG_ECHO = False
-
-# --- Symbol List ---
-# List of all symbols to monitor
+# --- Symbol List (Options Only) ---
 SYMBOLS_TO_MONITOR = [
     "NIFTY30DEC2526200CE", "NIFTY30DEC2526200PE",
     "NIFTY30DEC2526150CE", "NIFTY30DEC2526150PE",
@@ -53,7 +46,7 @@ SYMBOLS_TO_MONITOR = [
     "BANKNIFTY30DEC2558900CE", "BANKNIFTY30DEC2558900PE",
     "BANKNIFTY30DEC2558800CE", "BANKNIFTY30DEC2558800PE",
     "BANKNIFTY30DEC2559400CE", "BANKNIFTY30DEC2559400PE",
-    "BANKNIFTY30DEC2559500CE", "BANKNIFTY30DEC2559500PE",
+    "BANKNIFTY30DEC255950CE", "BANKNIFTY30DEC255950PE",
     "BANKNIFTY30DEC2559600CE", "BANKNIFTY30DEC2559600PE",
     "BANKNIFTY30DEC2559700CE", "BANKNIFTY30DEC2559700PE",
     "BANKNIFTY30DEC2559800CE", "BANKNIFTY30DEC2559800PE",
@@ -79,339 +72,249 @@ SYMBOLS_TO_MONITOR = [
     "RELIANCE30DEC251600CE", "RELIANCE30DEC251600PE",
     "RELIANCE30DEC251610CE", "RELIANCE30DEC251610PE",
     "RELIANCE30DEC251620CE", "RELIANCE30DEC251620PE",
-    "BANKNIFTY30DEC25FUT", "NIFTY30DEC25FUT",
-    "RELIANCE30DEC25FUT", "HDFCBANK30DEC25FUT",
 ]
 
 # --- Logic & Thresholds ---
-LOT_SIZES_MAP = {
-    "NIFTY": 75,
-    "BANKNIFTY": 35,
-    "RELIANCE": 500,
-    "HDFCBANK": 550,
-}
-GENERIC_LOT_SIZE = 1 # Fallback for symbols not in LOT_SIZES_MAP
-
-WRITER_THRESHOLDS = {
-    "LOW": 50, "MEDIUM": 75, "HIGH": 100, "EXTRA HIGH": 150, "EXTREME HIGH": 200,
-}
-BUYER_ALERT_LEVELS = {"HIGH", "EXTRA HIGH", "EXTREME HIGH"}
+BANKNIFTY_LOT = 35
+OI_ROC_THRESHOLD = 3.0 # Temporarily lowered for IV testing
 
 # ==============================================================================
 # =============================== STATE & UTILITIES ============================
 # ==============================================================================
 
-# Dictionary to hold the current and previous state for each symbol
-# Structure: { "symbol_name": { "price": 0, "price_prev": 0, "oi": 0, "oi_prev": 0 } }
-symbol_data_state = {symbol: {"price": 0, "price_prev": 0, "oi": 0, "oi_prev": 0} for symbol in SYMBOLS_TO_MONITOR}
+# State now supports None for IV to track missing data
+symbol_data_state = {
+    symbol: {
+        "price": 0, "price_prev": 0,
+        "oi": 0, "oi_prev": 0,
+        "iv": None, "iv_prev": None, # Initialize IV as None
+    } for symbol in SYMBOLS_TO_MONITOR
+}
 
 def now():
     return datetime.now().strftime("%H:%M:%S")
 
-def send_whatsapp(msg: str):
-    """Sends a message to the configured UltraMSG group."""
-    params = {
-        'token': ULTRAMSG_TOKEN,
-        'to': ULTRAMSG_GROUP_ID,
-        'body': msg,
-        'priority': 10
-    }
-    try:
-        response = requests.post(ULTRAMSG_API_URL, params=params, timeout=10)
-        response.raise_for_status() 
-        print(f"WA: Message sent. Response: {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"WA ERROR: {e}")
-    except Exception as e:
-        print(f"WA UNEXPECTED ERROR: {e}")
+async def send_whatsapp(msg: str):
+    """Sends a message to the configured UltraMSG group without blocking the event loop."""
+    print(f"📦 [{now()}] Preparing to send WhatsApp message...")
+    loop = asyncio.get_running_loop()
+    
+    params = {'token': ULTRAMSG_TOKEN, 'to': ULTRAMSG_GROUP_ID, 'body': msg, 'priority': 10}
+    
+    # Use functools.partial to prepare the blocking function with its arguments
+    blocking_call = functools.partial(requests.post, ULTRAMSG_API_URL, params=params, timeout=10)
 
+    try:
+        # Run the blocking call in a separate thread
+        response = await loop.run_in_executor(None, blocking_call)
+        response.raise_for_status() 
+        print(f"✅ [{now()}] WhatsApp message sent successfully. Response: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}")
+    except Exception as e:
+        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}")
 # ==============================================================================
 # =============================== CORE LOGIC ===================================
 # ==============================================================================
 
 def lots_from_oi_change(symbol, oi_change):
-    lot_size = GENERIC_LOT_SIZE # Default
-    # Extract product name from symbol (e.g., NIFTY, BANKNIFTY, RELIANCE)
-    product = ""
-    if "NIFTY" in symbol:
-        product = "NIFTY"
-    elif "BANKNIFTY" in symbol:
-        product = "BANKNIFTY"
+    """Calculates the number of lots from a change in Open Interest."""
+    lot_size = 75 # Default for NIFTY
+    if "BANKNIFTY" in symbol:
+        lot_size = BANKNIFTY_LOT # 35
     elif "RELIANCE" in symbol:
-        product = "RELIANCE"
+        lot_size = 500
     elif "HDFCBANK" in symbol:
-        product = "HDFCBANK"
+        lot_size = 550
     
-    if product in LOT_SIZES_MAP:
-        lot_size = LOT_SIZES_MAP[product]
-        
     if lot_size == 0: return 0
     return int(abs(oi_change) / lot_size)
 
 def lot_bucket(lots):
+    """Classifies the number of lots into qualitative buckets."""
     if lots >= 200: return "EXTREME HIGH"
     if lots >= 150: return "EXTRA HIGH"
     if lots >= 100: return "HIGH"
     if lots >= 75: return "MEDIUM"
-    if lots >= 50: return "LOW"
+    if lots >= 1: return "LOW"
     return "IGNORE"
 
-def classify_option(oi_change, price_change, symbol):
-    """
-    Classifies option activity based on OI and Price changes.
-    """
-    is_call = "CE" in symbol
-    
+def classify_option(oi_change, price_change, iv_change, symbol):
+    is_call, is_put = "CE" in symbol, "PE" in symbol
     if oi_change > 0:
-        if (is_call and price_change > 0) or (not is_call and price_change < 0):
-            return "Fresh Buying"
-        elif (is_call and price_change < 0) or (not is_call and price_change > 0):
-            return "Fresh Writing"
+        if (is_call and price_change < 0) or (is_put and price_change > 0):
+            return "Fresh Writing (High Conviction)" if iv_change < 0 else "Forced Writing / Hedging"
+        elif (is_call and price_change > 0) or (is_put and price_change < 0):
+            return "Strong Buying" if iv_change > 0 else "Speculative Buying"
     elif oi_change < 0:
-        if (is_call and price_change > 0) or (not is_call and price_change < 0):
-            return "Short Covering"
-        elif (is_call and price_change < 0) or (not is_call and price_change > 0):
-            return "Long Unwinding"
-
+        if (is_call and price_change > 0) or (is_put and price_change < 0):
+            return "Unwinding / Position Exit" if iv_change > 0 else "Profit Booking (Writers)"
+        elif (is_call and price_change < 0) or (is_put and price_change > 0):
+            return "Long Liquidation" if iv_change > 0 else "Profit Booking (Buyers)"
     return "Indecisive Movement"
 
-def classify_future(oi_change, price_change):
-    if oi_change > 0 and price_change > 0: return "FUTURE BUYING"
-    if oi_change > 0 and price_change < 0: return "FUTURE SHORT BUILDUP"
-    if oi_change < 0 and price_change > 0: return "FUTURE SHORT COVER"
-    if oi_change < 0 and price_change < 0: return "FUTURE LONG EXIT"
-    return "NO CLEAR FUTURE ACTION"
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc):
+    """Formats the alert message, showing N/A for missing IV."""
+    price_dir = "↑" if (state['price'] - state['price_prev']) > 0 else "↓"
+    product_name = "BANKNIFTY"
 
-def option_alert(symbol, action, bucket, lots, existing_oi, oi_chg, oi_roc, price_dir, price):
-    """
-    Formats the alert message for options.
-    """
-    # Extract Strike and Type from symbol name for better alerts
     try:
-        product = "BANKNIFTY" if "BANKNIFTY" in symbol else "NIFTY"
-        
-        if "CE" in symbol:
-            strike = symbol.split("CE")[0][-5:]
-            option_type = "CE"
-        elif "PE" in symbol:
-            strike = symbol.split("PE")[0][-5:]
-            option_type = "PE"
-        else:
-            strike = "N/A"
-            option_type = "N/A"
-    except Exception:
-        strike = "N/A"
-        option_type = "N/A"
-        product = symbol
+        match = re.search(r'(\d+)(CE|PE)$', symbol)
+        strike, option_type = match.groups()
+    except (AttributeError, TypeError):
+        strike, option_type = "N/A", ""
 
-    # Extract Expiry Date
-    expiry_date = "N/A"
-    try:
-        if product != "N/A":
-            # Search for a pattern like "DDMMMYY" where MMM is a month abbreviation
-            # Start search after the product name
-            match = re.search(r'(\d{2}[A-Z]{3}\d{2})', symbol[len(product):])
-            if match:
-                expiry_date = match.group(1)
-    except Exception:
-        expiry_date = "N/A" # Ensure expiry_date is defined on exception
+    # Display 'N/A' if IV data is not available
+    iv_display = f"{state['iv']:.2f}" if state['iv'] is not None else "N/A"
+    iv_roc_display = f"{iv_roc:.2f}%" if state['iv'] is not None else "N/A"
 
     main_message = f"""
-{product} | OPTION
-EXPIRY: {expiry_date}
+{product_name} | OPTION
 STRIKE: {strike}{option_type}
 ACTION: {action}
 SIZE: {bucket} ({lots} lots)
-EXISTING OI: {existing_oi}
+EXISTING OI: {state['oi_prev']}
 OI Δ: {oi_chg}
 OI RoC: {oi_roc:.2f}%
-PRICE: {price_dir} {price:.2f}
+PRICE: {price_dir}
+IV: {iv_display}
+IV RoC: {iv_roc_display}
 TIME: {now()}
-""".strip()
+"""
 
-    # As per user request, add a new section with symbol parts (including expiry)
     added_section = f"""
-{product} {expiry_date} {strike} {option_type}
-""".strip()
+{product_name} {strike} {option_type}
+
+{state['price']:.2f}
+"""
 
     return f"{main_message}\n\n{added_section}"
-
-def future_alert(symbol, action, bucket, lots, oi_chg, oi_roc):
-    product = symbol.split('.')[0]
-    return f"""
-{product} | FUTURE
-ACTION: {action}
-SIZE: {bucket} ({lots} lots)
-OI Δ: {oi_chg}
-OI RoC: {oi_roc:.2f}%
-TIME: {now()}
-"""
-
-def combo_alert(option_msg, future_msg):
-    return f"""
-🔥 STRONG COMBO CONFIRMATION 🔥
-
-{option_msg}
-
-{future_msg}
-"""
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
 # ==============================================================================
 
 async def process_data(data):
-    """Processes a single data packet from the WebSocket."""
+    """
+    Processes a single data packet, sending an alert instantly if the threshold is met.
+    Handles missing IV data by displaying 'N/A'.
+    """
     global symbol_data_state
     
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state:
-        return # Not a symbol we are monitoring
+        return
 
-    # Update state
     state = symbol_data_state[symbol]
-    state["price_prev"] = state["price"]
-    state["oi_prev"] = state["oi"]
-    state["price"] = data.get("LastTradePrice", state["price"])
-    state["oi"] = data.get("OpenInterest", state["oi"])
 
-    # Wait for at least one previous tick to have data
-    if state["price_prev"] == 0 or state["oi_prev"] == 0:
-        print(f"[{now()}] Initializing data for {symbol}...")
+    new_price = data.get("LastTradePrice")
+    new_oi = data.get("OpenInterest")
+    new_iv = data.get("ImpliedVolatility") # Can be None
+
+    if new_price is None or new_oi is None:
         return
 
-    # Calculate changes
-    price_chg = state["price"] - state["price_prev"]
+    state["price_prev"], state["oi_prev"], state["iv_prev"] = state["price"], state["oi"], state["iv"]
+    state["price"], state["oi"], state["iv"] = new_price, new_oi, new_iv
+
+    if state["oi_prev"] == 0:
+        print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.")
+        return
+
     oi_chg = state["oi"] - state["oi_prev"]
-
-    # If no change, do nothing
-    if price_chg == 0 and oi_chg == 0:
+    if oi_chg == 0:
         return
 
-    oi_roc = (oi_chg / state["oi_prev"] * 100) if state["oi_prev"] else 0
-    lots = lots_from_oi_change(symbol, oi_chg)
-    bucket = lot_bucket(lots)
+    # --- Calculations ---
+    price_chg = state["price"] - state["price_prev"]
+    
+    # Calculate IV change and RoC, ensuring they are always numbers
+    iv_chg = 0
+    iv_roc = 0.0
+    if state["iv"] is not None and state["iv_prev"] is not None:
+        iv_chg = state["iv"] - state["iv_prev"]
+        if state["iv_prev"] != 0:
+            try:
+                iv_roc = (iv_chg / state["iv_prev"]) * 100
+            except ZeroDivisionError:
+                iv_roc = 0.0
+    
+    # Calculate OI RoC
+    try:
+        oi_roc = (oi_chg / state["oi_prev"]) * 100
+    except ZeroDivisionError:
+        oi_roc = 0.0
 
-    if bucket == "IGNORE":
-        return
-
-    is_future = "FUT" in symbol
-    action = ""
-
-    if is_future:
-        # For futures, we only process the action for combo alerts, no individual WhatsApp messages.
-        action = classify_future(oi_chg, price_chg)
-        print(f"INFO: Future activity detected: {action} on {symbol}")
-    else: # It's an option
-        action = classify_option(oi_chg, price_chg, symbol)
-        price_dir = "↑" if price_chg > 0 else "↓"
-        alert_msg = option_alert(
-            symbol, action, bucket, lots, 
-            state["oi_prev"], oi_chg, oi_roc, price_dir, state["price"]
-        )
+    # --- Instant Alert Logic ---
+    if abs(oi_roc) > OI_ROC_THRESHOLD:
+        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. TRIGGERING ALERT.")
         
-        # Determine the current OI RoC threshold based on the instrument
-        current_roc_threshold = 3.0 # Default threshold for most instruments
-
-        if "NIFTY" in symbol:
-            current_roc_threshold = 5.0
-        # BANKNIFTY, RELIANCE, HDFCBANK will use the default 3% threshold.
-
-        # Send WhatsApp alert ONLY if OI RoC is high (above current_roc_threshold)
-        if oi_roc > current_roc_threshold:
-            print(f"ALERT: Triggered for {symbol}. OI ROC: {oi_roc:.2f}%. Sending WhatsApp.")
-            send_whatsapp(alert_msg)
-
-        # --- Combo Alert Logic ---
-        # This part remains active as combo alerts are requested.
-        fut_symbol = ""
-        if "BANKNIFTY" in symbol: fut_symbol = "BANKNIFTY30DEC25FUT"
-        elif "NIFTY" in symbol: fut_symbol = "NIFTY30DEC25FUT"
-
-        if fut_symbol and fut_symbol in symbol_data_state and symbol_data_state[fut_symbol]["oi_prev"] > 0:
-            fut_state = symbol_data_state[fut_symbol]
-            fut_oi_chg = fut_state["oi"] - fut_state["oi_prev"]
-            fut_price_chg = fut_state["price"] - fut_state["price_prev"]
-            fut_action = classify_future(fut_oi_chg, fut_price_chg)
-            
-            # Check for confirming future action (e.g., Buyer In + Future Buying)
-            if (action == "Strong Buying" and fut_action == "FUTURE BUYING") or \
-               (action == "Fresh Writing (High Conviction)" and "SHORT" in fut_action):
-                fut_lots = lots_from_oi_change(fut_symbol, fut_oi_chg)
-                fut_bucket = lot_bucket(fut_lots)
-                if fut_bucket != "IGNORE":
-                    fut_oi_roc = (fut_oi_chg / fut_state["oi_prev"] * 100)
-                    future_msg = future_alert(fut_symbol, fut_action, fut_bucket, fut_lots, fut_oi_chg, fut_oi_roc)
-                    combo_msg = combo_alert(alert_msg, future_msg)
-                    print(f"ALERT: COMBO detected on {symbol} (Sending WhatsApp)")
-                    send_whatsapp(combo_msg)
+        action = classify_option(oi_chg, price_chg, iv_chg, symbol)
+        lots = lots_from_oi_change(symbol, oi_chg)
+        bucket = lot_bucket(lots)
+        print(f"📊 [{now()}] {symbol}: Calculated lots: {lots}, Bucket: {bucket}")
+        
+        if bucket != "IGNORE":
+            alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc)
+            await send_whatsapp(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
-    while True: # Main loop for reconnection
+    while True:
         try:
-            async with websockets.connect(WSS_URL) as websocket:
-                print(f"[{now()}] Connected to WebSocket.")
+            async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
+                print(f"✅ [{now()}] Connected to WebSocket. Authenticating...")
                 
-                # 1. Authenticate
                 auth_request = {"MessageType": "Authenticate", "Password": API_KEY}
                 await websocket.send(json.dumps(auth_request))
-                auth_response_str = await websocket.recv()
-                auth_response_json = json.loads(auth_response_str)
+                auth_response = json.loads(await websocket.recv())
                 
-                if not auth_response_json.get("Complete"):
-                    print(f"[{now()}] Authentication failed: {auth_response_str}. Retrying in 30s.")
+                if not auth_response.get("Complete"):
+                    print(f"❌ [{now()}] Authentication FAILED: {auth_response.get('Comment')}. Retrying in 30s.")
                     await asyncio.sleep(30)
                     continue
                 
-                print(f"[{now()}] Authentication successful: {auth_response_str}")
+                print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...")
 
-                # 2. Subscribe to all symbols
                 for symbol in SYMBOLS_TO_MONITOR:
-                    # Using SubscribeRealtime as confirmed from docs
-                    subscribe_request = {
-                        "MessageType": "SubscribeRealtime",
-                        "Exchange": "NFO",
-                        "Unsubscribe": "false",
-                        "InstrumentIdentifier": symbol
-                    }
-                    await websocket.send(json.dumps(subscribe_request))
-                print(f"[{now()}] Sent subscription requests for {len(SYMBOLS_TO_MONITOR)} symbols.")
+                    await websocket.send(json.dumps({
+                        "MessageType": "SubscribeRealtime", "Exchange": "NFO",
+                        "Unsubscribe": "false", "InstrumentIdentifier": symbol
+                    }))
+                print(f"✅ [{now()}] Subscriptions sent. Scanner is now live.")
+                await send_whatsapp("✅ GFDL Scanner is LIVE and monitoring the market.")
 
-                # 3. Process incoming messages
                 async for message in websocket:
                     try:
                         data = json.loads(message)
-                        msg_type = data.get("MessageType")
-
-                        if msg_type == "RealtimeResult":
-                            await process_data(data)
-                        elif msg_type == "Echo":
-                            if DEBUG_ECHO:
-                                print(f"[{now()}] Echo heartbeat: {message}")
-                            continue  # ignore heartbeats by default
-                        else:
-                            print(f"[{now()}] Received diagnostic message: {message}")
+                        if data.get("MessageType") == "RealtimeResult":
+                            await process_data(data)                        
                     except json.JSONDecodeError:
-                        print(f"[{now()}] Received non-JSON message: {message}")
+                        print(f"⚠️ [{now()}] Warning: Received a non-JSON message.")
                     except Exception as e:
-                        print(f"[{now()}] Error processing message: {e}")
+                        print(f"❌ [{now()}] Error during message processing for {message}: {e}")
 
         except websockets.exceptions.ConnectionClosed as e:
-            print(f"[{now()}] WebSocket connection closed: {e}. Reconnecting in 10s.")
+            print(f"⚠️ [{now()}] WebSocket connection closed: {e}. Reconnecting in 10 seconds...")
             await asyncio.sleep(10)
         except Exception as e:
-            print(f"[{now()}] An unexpected error occurred: {e}. Reconnecting in 30s.")
+            print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...")
             await asyncio.sleep(30)
 
 if __name__ == "__main__":
     print("GFDL Scanner Starting...")
-    send_whatsapp("GFDL Scanner Starting...")
+    # In a real async app, you'd await this, but for shutdown it's okay to fire and forget
+    asyncio.run(send_whatsapp("GFDL Scanner Starting..."))
     try:
         asyncio.run(run_scanner())
     except KeyboardInterrupt:
-        print("\nScanner stopped by user.")
-        send_whatsapp("GFDL Scanner Stopped by user.")
+        print("\n🛑 Scanner stopped by user.")
+        # In a real async app, you'd await this, but for shutdown it's okay to fire and forget
+        asyncio.run(send_whatsapp("🛑 GFDL Scanner was stopped manually."))
     except Exception as e:
-        print(f"A critical error occurred: {e}")
-        send_whatsapp(f"GFDL Scanner CRASHED: {e}")
+        error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
+        print(error_message)
+        asyncio.run(send_whatsapp(error_message))
+
+
+
