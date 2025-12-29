@@ -32,8 +32,8 @@ required_vars = {
 missing_vars = [key for key, value in required_vars.items() if value is None]
 
 if missing_vars:
-    print(f"❌ Critical Error: Missing required environment variables: {', '.join(missing_vars)}")
-    print("Please set these variables in your deployment environment and restart the application.")
+    print(f"❌ Critical Error: Missing required environment variables: {', '.join(missing_vars)}", flush=True)
+    print("Please set these variables in your deployment environment and restart the application.", flush=True)
     sys.exit(1) # Exit the script with a non-zero status code to indicate failure
 
 # --- API and Connection ---
@@ -110,7 +110,7 @@ def now():
 
 async def send_whatsapp(msg: str):
     """Sends a message to the configured UltraMSG group without blocking the event loop."""
-    print(f"📦 [{now()}] Preparing to send WhatsApp message...")
+    print(f"📦 [{now()}] Preparing to send WhatsApp message...", flush=True)
     loop = asyncio.get_running_loop()
     
     params = {'token': ULTRAMSG_TOKEN, 'to': ULTRAMSG_GROUP_ID, 'body': msg, 'priority': 10}
@@ -122,11 +122,11 @@ async def send_whatsapp(msg: str):
         # Run the blocking call in a separate thread
         response = await loop.run_in_executor(None, blocking_call)
         response.raise_for_status() 
-        print(f"✅ [{now()}] WhatsApp message sent successfully. Response: {response.text}")
+        print(f"✅ [{now()}] WhatsApp message sent successfully. Response: {response.text}", flush=True)
     except requests.exceptions.RequestException as e:
-        print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}")
+        print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}", flush=True)
     except Exception as e:
-        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}")
+        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}", flush=True)
 
 # ==============================================================================
 # =============================== CORE LOGIC ===================================
@@ -168,12 +168,27 @@ def classify_option(oi_change, price_change, iv_change, symbol):
 def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc):
     """Formats the alert message, showing N/A for missing IV."""
     price_dir = "↑" if (state['price'] - state['price_prev']) > 0 else "↓"
-    product_name = "BANKNIFTY"
+    
+    # Dynamically determine product name
+    product_name = "UNKNOWN" # Default
+    if "HDFCBANK" in symbol:
+        product_name = "HDFCBANK"
+    elif "ICICIBANK" in symbol:
+        product_name = "ICICI" # As requested by user
+    elif "SBIN" in symbol:
+        product_name = "SBIN"
+    elif "BANKNIFTY" in symbol:
+        product_name = "BANKNIFTY"
 
     try:
-        match = re.search(r'(\d+)(CE|PE)$', symbol)
-        strike, option_type = match.groups()
+        # For options, extract strike and type
+        if "FUT" not in symbol:
+             match = re.search(r'(\d+)(CE|PE)$', symbol)
+             strike, option_type = match.groups()
+        else: # For futures
+             strike, option_type = "FUT", ""
     except (AttributeError, TypeError):
+        # Fallback for any other format
         strike, option_type = "N/A", ""
 
     # Display 'N/A' if IV data is not available
@@ -181,7 +196,7 @@ def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv
     iv_roc_display = f"{iv_roc:.2f}%" if state['iv'] is not None else "N/A"
 
     main_message = f"""
-{product_name} | OPTION
+{product_name} | {'OPTION' if 'FUT' not in symbol else 'FUTURE'}
 STRIKE: {strike}{option_type}
 ACTION: {action}
 SIZE: {bucket} ({lots} lots)
@@ -195,7 +210,7 @@ TIME: {now()}
 """
 
     added_section = f"""
-{product_name} {strike} {option_type}
+{product_name} {strike}{option_type}
 
 {state['price']:.2f}
 """
@@ -230,7 +245,7 @@ async def process_data(data):
     state["price"], state["oi"], state["iv"] = new_price, new_oi, new_iv
 
     if state["oi_prev"] == 0:
-        print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.")
+        print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.", flush=True)
         return
 
     oi_chg = state["oi"] - state["oi_prev"]
@@ -259,12 +274,12 @@ async def process_data(data):
 
     # --- Instant Alert Logic ---
     if abs(oi_roc) > OI_ROC_THRESHOLD:
-        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. TRIGGERING ALERT.")
+        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. TRIGGERING ALERT.", flush=True)
         
         action = classify_option(oi_chg, price_chg, iv_chg, symbol)
         lots = lots_from_oi_change(symbol, oi_chg)
         bucket = lot_bucket(lots)
-        print(f"📊 [{now()}] {symbol}: Calculated lots: {lots}, Bucket: {bucket}")
+        print(f"📊 [{now()}] {symbol}: Calculated lots: {lots}, Bucket: {bucket}", flush=True)
         
         if bucket != "IGNORE":
             alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc)
@@ -275,25 +290,25 @@ async def run_scanner():
     while True:
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
-                print(f"✅ [{now()}] Connected to WebSocket. Authenticating...")
+                print(f"✅ [{now()}] Connected to WebSocket. Authenticating...", flush=True)
                 
                 auth_request = {"MessageType": "Authenticate", "Password": API_KEY}
                 await websocket.send(json.dumps(auth_request))
                 auth_response = json.loads(await websocket.recv())
                 
                 if not auth_response.get("Complete"):
-                    print(f"❌ [{now()}] Authentication FAILED: {auth_response.get('Comment')}. Retrying in 30s.")
+                    print(f"❌ [{now()}] Authentication FAILED: {auth_response.get('Comment')}. Retrying in 30s.", flush=True)
                     await asyncio.sleep(30)
                     continue
                 
-                print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...")
+                print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...", flush=True)
 
                 for symbol in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({
                         "MessageType": "SubscribeRealtime", "Exchange": "NFO",
                         "Unsubscribe": "false", "InstrumentIdentifier": symbol
                     }))
-                print(f"✅ [{now()}] Subscriptions sent. Scanner is now live.")
+                print(f"✅ [{now()}] Subscriptions sent. Scanner is now live.", flush=True)
                 await send_whatsapp("✅ GFDL Scanner is LIVE and monitoring the market.")
 
                 async for message in websocket:
@@ -302,26 +317,26 @@ async def run_scanner():
                         if data.get("MessageType") == "RealtimeResult":
                             await process_data(data)                        
                     except json.JSONDecodeError:
-                        print(f"⚠️ [{now()}] Warning: Received a non-JSON message.")
+                        print(f"⚠️ [{now()}] Warning: Received a non-JSON message.", flush=True)
                     except Exception as e:
-                        print(f"❌ [{now()}] Error during message processing for {message}: {e}")
+                        print(f"❌ [{now()}] Error during message processing for {message}: {e}", flush=True)
 
         except websockets.exceptions.ConnectionClosed as e:
-            print(f"⚠️ [{now()}] WebSocket connection closed: {e}. Reconnecting in 10 seconds...")
+            print(f"⚠️ [{now()}] WebSocket connection closed: {e}. Reconnecting in 10 seconds...", flush=True)
             await asyncio.sleep(10)
         except Exception as e:
-            print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...")
+            print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...", flush=True)
             await asyncio.sleep(30)
 
 if __name__ == "__main__":
-    print("🚀 GFDL Scanner Starting...")
+    print("🚀 GFDL Scanner Starting...", flush=True)
     try:
         asyncio.run(run_scanner())
     except KeyboardInterrupt:
-        print("\n🛑 Scanner stopped by user.")
+        print("\n🛑 Scanner stopped by user.", flush=True)
         # In a real async app, you'd await this, but for shutdown it's okay to fire and forget
         asyncio.run(send_whatsapp("🛑 GFDL Scanner was stopped manually."))
     except Exception as e:
         error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
-        print(error_message)
+        print(error_message, flush=True)
         asyncio.run(send_whatsapp(error_message))
