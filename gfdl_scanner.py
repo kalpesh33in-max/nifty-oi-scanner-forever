@@ -8,6 +8,7 @@ import re
 import functools
 import os
 import sys
+from zoneinfo import ZoneInfo
 
 # ==============================================================================
 # ============================== CONFIGURATION =================================
@@ -105,8 +106,16 @@ symbol_data_state = {
     } for symbol in SYMBOLS_TO_MONITOR
 }
 
+# Dictionary to hold the latest price of the underlying futures
+future_prices = {
+    "BANKNIFTY": 0,
+    "HDFCBANK": 0,
+    "ICICIBANK": 0,
+    "SBIN": 0,
+}
+
 def now():
-    return datetime.now().strftime("%H:%M:%S")
+    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
 
 async def send_whatsapp(msg: str):
     """Sends a message to the configured UltraMSG group without blocking the event loop."""
@@ -165,7 +174,60 @@ def classify_option(oi_change, price_change, iv_change, symbol):
             return "Long Liquidation" if iv_change > 0 else "Profit Booking (Buyers)"
     return "Indecisive Movement"
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc):
+def get_option_moneyness(symbol, future_prices):
+    """
+    Checks if an option is ITM, ATM, or OTM based on the latest future price.
+    Returns a string: "ITM", "ATM", or "OTM".
+    """
+    # This filter does not apply to future contracts themselves
+    if "FUT" in symbol:
+        return "N/A"
+
+    # Identify underlying and get its future price
+    underlying = None
+    if "HDFCBANK" in symbol: underlying = "HDFCBANK"
+    elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
+    elif "SBIN" in symbol: underlying = "SBIN"
+    elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
+
+    if not underlying:
+        return "N/A" # If it's not one of our known underlyings, don't block it
+
+    future_price = future_prices.get(underlying)
+    if not future_price or future_price == 0:
+        print(f"⏳ [{now()}] {symbol}: Waiting for future price of {underlying} to check moneyness.", flush=True)
+        return "OTM" # Treat as OTM if we don't have the future price yet
+
+    # Extract strike and type
+    try:
+        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
+        strike_price = int(match.group(2))
+        option_type = match.group(3)
+    except (AttributeError, TypeError, ValueError):
+        return "N/A" # If we can't parse the option, don't block it
+
+    # Define ATM band (0.5% of future price)
+    atm_band = future_price * 0.005
+    
+    # Check ATM first
+    if abs(future_price - strike_price) <= atm_band:
+        return "ATM"
+    
+    # Check ITM
+    is_itm = False
+    if option_type == 'CE' and strike_price < future_price:
+        is_itm = True
+    if option_type == 'PE' and strike_price > future_price:
+        is_itm = True
+
+    if is_itm:
+        return "ITM"
+    else:
+        # If not ATM and not ITM, it must be OTM
+        print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
+        return "OTM"
+
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness):
     """Formats the alert message, showing N/A for missing IV."""
     price_dir = "↑" if (state['price'] - state['price_prev']) > 0 else "↓"
     
@@ -180,37 +242,48 @@ def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv
     elif "BANKNIFTY" in symbol:
         product_name = "BANKNIFTY"
 
-    try:
-        # For options, extract strike and type
-        if "FUT" not in symbol:
-             match = re.search(r'(\d+)(CE|PE)$', symbol)
-             strike, option_type = match.groups()
-        else: # For futures
-             strike, option_type = "FUT", ""
-    except (AttributeError, TypeError):
-        # Fallback for any other format
-        strike, option_type = "N/A", ""
+    year, strike_display, option_type_display = "", "", ""
+    is_future = "FUT" in symbol # Determine if it's a future
 
-    # Display 'N/A' if IV data is not available
-    iv_display = f"{state['iv']:.2f}" if state['iv'] is not None else "N/A"
-    iv_roc_display = f"{iv_roc:.2f}%" if state['iv'] is not None else "N/A"
+    try:
+        if is_future:
+            match = re.search(r'.*?(\d{2})FUT$', symbol)
+            if match:
+                year = match.group(1)
+            strike_display = "FUT" # For internal logic, but won't be displayed in main_message
+            option_type_display = ""
+        else: # For options
+            match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
+            if match:
+                year = match.group(1)
+                strike_display = match.group(2)
+                option_type_display = match.group(3)
+            else: # Fallback for old format without date
+                match = re.search(r'(\d+)(CE|PE)$', symbol)
+                strike_display = match.group(1)
+                option_type_display = match.group(2)
+    except Exception:
+        year, strike_display, option_type_display = "", "N/A", "" # Fallback if parsing completely fails
+
+    # Construct the strike line conditionally
+    strike_moneyness_line = ""
+    if not is_future:
+        strike_moneyness_line = f"STRIKE: {strike_display}{option_type_display} {moneyness}"
 
     main_message = f"""
-{product_name} | {'OPTION' if 'FUT' not in symbol else 'FUTURE'}
-STRIKE: {strike}{option_type}
+{product_name} | {'FUTURE' if is_future else 'OPTION'}
+{strike_moneyness_line}
 ACTION: {action}
 SIZE: {bucket} ({lots} lots)
 EXISTING OI: {state['oi_prev']}
 OI Δ: {oi_chg}
 OI RoC: {oi_roc:.2f}%
 PRICE: {price_dir}
-IV: {iv_display}
-IV RoC: {iv_roc_display}
 TIME: {now()}
 """
 
     added_section = f"""
-{product_name} {strike}{option_type}
+{year} {product_name} {'FUT' if is_future else f'{strike_display}{option_type_display}'}
 
 {state['price']:.2f}
 """
@@ -223,22 +296,37 @@ TIME: {now()}
 
 async def process_data(data):
     """
-    Processes a single data packet, sending an alert instantly if the threshold is met.
-    Handles missing IV data by displaying 'N/A'.
+    Processes a single data packet, updating future prices or sending option alerts.
+    Option alerts are filtered to only include ITM/ATM strikes.
     """
-    global symbol_data_state
+    global symbol_data_state, future_prices
     
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state:
         return
 
-    state = symbol_data_state[symbol]
-
     new_price = data.get("LastTradePrice")
-    new_oi = data.get("OpenInterest")
-    new_iv = data.get("ImpliedVolatility") # Can be None
+    if new_price is None:
+        return
 
-    if new_price is None or new_oi is None:
+    # If the symbol is a future, update its price and stop processing
+    if "FUT" in symbol:
+        underlying = None
+        if "HDFCBANK" in symbol: underlying = "HDFCBANK"
+        elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
+        elif "SBIN" in symbol: underlying = "SBIN"
+        elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
+        
+        if underlying and new_price > 0: # Ensure price is valid
+            future_prices[underlying] = new_price
+        return
+
+    # --- Standard processing for Option contracts ---
+    state = symbol_data_state[symbol]
+    new_oi = data.get("OpenInterest")
+    new_iv = data.get("ImpliedVolatility")
+
+    if new_oi is None:
         return
 
     state["price_prev"], state["oi_prev"], state["iv_prev"] = state["price"], state["oi"], state["iv"]
@@ -255,35 +343,37 @@ async def process_data(data):
     # --- Calculations ---
     price_chg = state["price"] - state["price_prev"]
     
-    # Calculate IV change and RoC, ensuring they are always numbers
     iv_chg = 0
     iv_roc = 0.0
-    if state["iv"] is not None and state["iv_prev"] is not None:
-        iv_chg = state["iv"] - state["iv_prev"]
-        if state["iv_prev"] != 0:
-            try:
-                iv_roc = (iv_chg / state["iv_prev"]) * 100
-            except ZeroDivisionError:
-                iv_roc = 0.0
+    if state["iv"] is not None and state["iv_prev"] is not None and state["iv_prev"] != 0:
+        try:
+            iv_chg = state["iv"] - state["iv_prev"]
+            iv_roc = (iv_chg / state["iv_prev"]) * 100
+        except ZeroDivisionError:
+            iv_roc = 0.0
     
-    # Calculate OI RoC
     try:
         oi_roc = (oi_chg / state["oi_prev"]) * 100
     except ZeroDivisionError:
         oi_roc = 0.0
 
-    # --- Instant Alert Logic ---
+    # --- Alert Logic ---
     if abs(oi_roc) > OI_ROC_THRESHOLD:
-        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. TRIGGERING ALERT.", flush=True)
+        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
         
-        action = classify_option(oi_chg, price_chg, iv_chg, symbol)
         lots = lots_from_oi_change(symbol, oi_chg)
         bucket = lot_bucket(lots)
-        print(f"📊 [{now()}] {symbol}: Calculated lots: {lots}, Bucket: {bucket}", flush=True)
         
         if bucket != "IGNORE":
-            alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc)
-            await send_whatsapp(alert_msg)
+            #
+            # <<< NEW: Filter for ITM/ATM options before sending alert >>>
+            #
+            moneyness = get_option_moneyness(symbol, future_prices)
+            if moneyness in ["ITM", "ATM"]:
+                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                action = classify_option(oi_chg, price_chg, iv_chg, symbol)
+                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness)
+                await send_whatsapp(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
