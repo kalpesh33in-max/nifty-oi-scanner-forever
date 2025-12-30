@@ -122,7 +122,6 @@ symbol_data_state = {
     symbol: {
         "price": 0, "price_prev": 0,
         "oi": 0, "oi_prev": 0,
-        "iv": None, "iv_prev": None, # Initialize IV as None
     } for symbol in SYMBOLS_TO_MONITOR
 }
 
@@ -189,23 +188,20 @@ def lot_bucket(lots, symbol):
     
     return "IGNORE" # Should not be reached if alert thresholds are met
 
-def classify_option(oi_change, price_change, iv_change, symbol):
+def classify_option(oi_change, price_change, symbol):
+    """Classifies option activity based on OI and Price change."""
     is_call, is_put = "CE" in symbol, "PE" in symbol
     if oi_change > 0:  # OI Increased
-        # Writing: Price neutral or drops for Calls (or up/neutral for Puts)
         if (is_call and price_change <= 0) or (is_put and price_change >= 0):
-            return "Fresh Writing (High Conviction)" if iv_change < 0 else "Forced Writing / Hedging"
-        # Buying: Price increases for Calls (or drops for Puts)
-        else: # (is_call and price_change > 0) or (is_put and price_change < 0)
-            return "Strong Buying" if iv_change > 0 else "Speculative Buying"
+            return "Option Writing"
+        else:  # (is_call and price_change > 0) or (is_put and price_change < 0)
+            return "Option Buying"
     elif oi_change < 0:  # OI Decreased
-        # Unwinding/Profit Booking (Writers): Price neutral or increases for Calls (or drops/neutral for Puts)
         if (is_call and price_change >= 0) or (is_put and price_change <= 0):
-            return "Unwinding / Position Exit" if iv_change > 0 else "Profit Booking (Writers)"
-        # Long Liquidation/Profit Booking (Buyers): Price decreases for Calls (or increases for Puts)
-        else: # (is_call and price_change < 0) or (is_put and price_change > 0)
-            return "Long Liquidation" if iv_change > 0 else "Profit Booking (Buyers)"
-    return "Indecisive Movement"
+            return "Short Covering / Writer Exit"
+        else:  # (is_call and price_change < 0) or (is_put and price_change > 0)
+            return "Long Unwinding / Liquidation"
+    return "Indecisive" # Should not be reached
 
 def get_option_moneyness(symbol, future_prices):
     """
@@ -260,7 +256,7 @@ def get_option_moneyness(symbol, future_prices):
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness):
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness):
     """Formats the alert message, showing N/A for missing IV."""
     price_chg_val = state['price'] - state['price_prev']
     price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
@@ -358,13 +354,12 @@ async def process_data(data):
     # --- Standard processing for Option contracts ---
     state = symbol_data_state[symbol]
     new_oi = data.get("OpenInterest")
-    new_iv = data.get("ImpliedVolatility")
 
     if new_oi is None:
         return
 
-    state["price_prev"], state["oi_prev"], state["iv_prev"] = state["price"], state["oi"], state["iv"]
-    state["price"], state["oi"], state["iv"] = new_price, new_oi, new_iv
+    state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
+    state["price"], state["oi"] = new_price, new_oi
 
     if state["oi_prev"] == 0:
         print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.", flush=True)
@@ -376,15 +371,6 @@ async def process_data(data):
 
     # --- Calculations ---
     price_chg = state["price"] - state["price_prev"]
-    
-    iv_chg = 0
-    iv_roc = 0.0
-    if state["iv"] is not None and state["iv_prev"] is not None and state["iv_prev"] != 0:
-        try:
-            iv_chg = state["iv"] - state["iv_prev"]
-            iv_roc = (iv_chg / state["iv_prev"]) * 100
-        except ZeroDivisionError:
-            iv_roc = 0.0
     
     try:
         oi_roc = (oi_chg / state["oi_prev"]) * 100
@@ -412,7 +398,7 @@ async def process_data(data):
             moneyness = get_option_moneyness(symbol, future_prices)
             if moneyness in ["ITM", "ATM"]:
                 print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_option(oi_chg, price_chg, iv_chg, symbol)
+                action = classify_option(oi_chg, price_chg, symbol)
                 
                 # --- Data Capture for Excel Report ---
                 try:
@@ -441,7 +427,7 @@ async def process_data(data):
                 daily_alerts.append(alert_data)
                 # --- End Data Capture ---
 
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness)
+                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness)
                 await send_whatsapp(alert_msg)
 
 async def run_scanner():
