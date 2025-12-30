@@ -1,2 +1,5 @@
 websockets
 requests
+pandas
+xlrd
+openpyxl
