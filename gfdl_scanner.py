@@ -3,16 +3,31 @@ import websockets
 import json
 import time
 import requests
-from datetime import datetime
+import pandas as pd
+from datetime import datetime, date
 import re
 import functools
 import os
 import sys
 from zoneinfo import ZoneInfo
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+
 
 # ==============================================================================
 # ============================== CONFIGURATION =================================
 # ==============================================================================
+
+# --- Email Configuration (for daily reports) ---
+# IMPORTANT: Use environment variables in production for security
+EMAIL_HOST = os.environ.get("EMAIL_HOST") # e.g., 'smtp.gmail.com'
+EMAIL_PORT = os.environ.get("EMAIL_PORT", 587) # e.g., 587 for TLS
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASS = os.environ.get("EMAIL_PASS")
+EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
 
 # --- Environment Variable Loading ---
 # Load credentials securely from environment variables
@@ -91,7 +106,12 @@ LOT_SIZES = {
     "SBIN": 750,
 }
 DEFAULT_LOT_SIZE = 75 # For any other symbol
-OI_ROC_THRESHOLD = 3.0 # Temporarily lowered for IV testing
+LOT_THRESHOLDS = {
+    "BANKNIFTY": 100,
+    "HDFCBANK": 50,
+    "ICICIBANK": 50,
+    "SBIN": 50,
+}
 
 # ==============================================================================
 # =============================== STATE & UTILITIES ============================
@@ -105,6 +125,11 @@ symbol_data_state = {
         "iv": None, "iv_prev": None, # Initialize IV as None
     } for symbol in SYMBOLS_TO_MONITOR
 }
+
+# --- Globals for Daily Reporting ---
+daily_alerts = []
+report_sent_today = False
+
 
 # Dictionary to hold the latest price of the underlying futures
 future_prices = {
@@ -151,26 +176,34 @@ def lots_from_oi_change(symbol, oi_change):
     if lot_size == 0: return 0
     return int(abs(oi_change) / lot_size)
 
-def lot_bucket(lots):
-    """Classifies the number of lots into qualitative buckets."""
-    if lots >= 200: return "EXTREME HIGH"
-    if lots >= 150: return "EXTRA HIGH"
-    if lots >= 100: return "HIGH"
-    if lots >= 75: return "MEDIUM"
-    if lots >= 1: return "LOW"
-    return "IGNORE"
+def lot_bucket(lots, symbol):
+    """Classifies the number of lots into qualitative buckets based on the symbol."""
+    if "BANKNIFTY" in symbol:
+        if lots >= 175: return "VERY HIGH"
+        if lots >= 125: return "HIGH"
+        if lots >= 100: return "LOW"
+    else:  # For other symbols like HDFCBANK, ICICIBANK, SBIN
+        if lots >= 100: return "VERY HIGH"
+        if lots >= 75: return "HIGH"
+        if lots >= 50: return "LOW"
+    
+    return "IGNORE" # Should not be reached if alert thresholds are met
 
 def classify_option(oi_change, price_change, iv_change, symbol):
     is_call, is_put = "CE" in symbol, "PE" in symbol
-    if oi_change > 0:
-        if (is_call and price_change < 0) or (is_put and price_change > 0):
+    if oi_change > 0:  # OI Increased
+        # Writing: Price neutral or drops for Calls (or up/neutral for Puts)
+        if (is_call and price_change <= 0) or (is_put and price_change >= 0):
             return "Fresh Writing (High Conviction)" if iv_change < 0 else "Forced Writing / Hedging"
-        elif (is_call and price_change > 0) or (is_put and price_change < 0):
+        # Buying: Price increases for Calls (or drops for Puts)
+        else: # (is_call and price_change > 0) or (is_put and price_change < 0)
             return "Strong Buying" if iv_change > 0 else "Speculative Buying"
-    elif oi_change < 0:
-        if (is_call and price_change > 0) or (is_put and price_change < 0):
+    elif oi_change < 0:  # OI Decreased
+        # Unwinding/Profit Booking (Writers): Price neutral or increases for Calls (or drops/neutral for Puts)
+        if (is_call and price_change >= 0) or (is_put and price_change <= 0):
             return "Unwinding / Position Exit" if iv_change > 0 else "Profit Booking (Writers)"
-        elif (is_call and price_change < 0) or (is_put and price_change > 0):
+        # Long Liquidation/Profit Booking (Buyers): Price decreases for Calls (or increases for Puts)
+        else: # (is_call and price_change < 0) or (is_put and price_change > 0)
             return "Long Liquidation" if iv_change > 0 else "Profit Booking (Buyers)"
     return "Indecisive Movement"
 
@@ -229,7 +262,8 @@ def get_option_moneyness(symbol, future_prices):
 
 def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness):
     """Formats the alert message, showing N/A for missing IV."""
-    price_dir = "↑" if (state['price'] - state['price_prev']) > 0 else "↓"
+    price_chg_val = state['price'] - state['price_prev']
+    price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
     
     # Dynamically determine product name
     product_name = "UNKNOWN" # Default
@@ -358,27 +392,67 @@ async def process_data(data):
         oi_roc = 0.0
 
     # --- Alert Logic ---
-    if abs(oi_roc) > OI_ROC_THRESHOLD:
-        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
+    lots = lots_from_oi_change(symbol, oi_chg)
+
+    # Determine the correct lot size threshold for the symbol
+    alert_threshold = 0
+    for name, threshold in LOT_THRESHOLDS.items():
+        if name in symbol:
+            alert_threshold = threshold
+            break
+    
+    if alert_threshold > 0 and lots >= alert_threshold:
+        print(f"🚨 [{now()}] {symbol}: Lot size {lots} >= {alert_threshold}. Potential Alert.", flush=True)
         
-        lots = lots_from_oi_change(symbol, oi_chg)
-        bucket = lot_bucket(lots)
+        bucket = lot_bucket(lots, symbol)
         
+        # This check is technically redundant now if LOT_THRESHOLDS only contains valid symbols,
+        # but it's good for safety.
         if bucket != "IGNORE":
-            #
-            # <<< NEW: Filter for ITM/ATM options before sending alert >>>
-            #
             moneyness = get_option_moneyness(symbol, future_prices)
             if moneyness in ["ITM", "ATM"]:
                 print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
                 action = classify_option(oi_chg, price_chg, iv_chg, symbol)
+                
+                # --- Data Capture for Excel Report ---
+                try:
+                    product_name = next(name for name in LOT_SIZES if name in symbol)
+                    match = re.search(r'(\d+)(CE|PE)$', symbol)
+                    strike, option_type = (match.group(1), match.group(2)) if match else ("FUT", "")
+                except (StopIteration, AttributeError):
+                    product_name, strike, option_type = symbol, "N/A", ""
+
+                price_chg_val = state['price'] - state['price_prev']
+                price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
+                
+                alert_data = {
+                    "time": now(),
+                    "symbol": product_name,
+                    "strike": strike,
+                    "ce/pe": option_type,
+                    "action": action,
+                    "lot size": lots,
+                    "EXISTING OI": state['oi_prev'],
+                    "OI Δ": oi_chg,
+                    "OI RoC": f"{oi_roc:.2f}%",
+                    "price": price_dir,
+                    "strike price": state['price']
+                }
+                daily_alerts.append(alert_data)
+                # --- End Data Capture ---
+
                 alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, iv_roc, moneyness)
                 await send_whatsapp(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
+    global report_sent_today, daily_alerts
+    
+    last_check_time = time.time()
+    
     while True:
         try:
+            # --- WebSocket Connection Logic ---
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
                 print(f"✅ [{now()}] Connected to WebSocket. Authenticating...", flush=True)
                 
@@ -403,6 +477,20 @@ async def run_scanner():
 
                 async for message in websocket:
                     try:
+                        # Non-blocking check for daily tasks (runs approx every 60s)
+                        if time.time() - last_check_time > 60:
+                            now_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+                            if now_time.hour == 0 and report_sent_today:
+                                print(f"🌅 [{now()}] New day. Resetting daily report flag.", flush=True)
+                                report_sent_today = False
+                                daily_alerts = []
+                            
+                            if now_time.hour == 15 and now_time.minute >= 45 and not report_sent_today:
+                                print(f"📅 [{now()}] Market closed. Time to generate and send daily report.", flush=True)
+                                await generate_and_email_report()
+                                report_sent_today = True
+                            last_check_time = time.time()
+
                         data = json.loads(message)
                         if data.get("MessageType") == "RealtimeResult":
                             await process_data(data)                        
@@ -417,6 +505,83 @@ async def run_scanner():
         except Exception as e:
             print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...", flush=True)
             await asyncio.sleep(30)
+
+async def generate_and_email_report():
+    """Generates an Excel report from daily_alerts and emails it."""
+    if not daily_alerts:
+        print(f"ℹ️ [{now()}] No alerts were generated today. Skipping report.", flush=True)
+        await send_whatsapp("ℹ️ GFDL Scanner recorded no significant alerts today. No report was generated.")
+        return
+
+    print(f"📝 [{now()}] Generating Excel report with {len(daily_alerts)} alerts...", flush=True)
+    
+    # --- Create Excel File in Memory ---
+    try:
+        df = pd.DataFrame(daily_alerts)
+        filename = f"GFDL_Scanner_Report_{date.today().strftime('%Y-%m-%d')}.xlsx"
+        
+        # Use a temporary directory to save the file
+        temp_dir = os.path.join(os.getcwd(), 'temp_reports')
+        os.makedirs(temp_dir, exist_ok=True)
+        filepath = os.path.join(temp_dir, filename)
+        
+        df.to_excel(filepath, index=False)
+        print(f"✅ [{now()}] Successfully created Excel report: {filepath}", flush=True)
+    except Exception as e:
+        print(f"❌ [{now()}] Failed to create Excel file: {e}", flush=True)
+        return
+
+    # --- Send Email with Attachment ---
+    if not all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_RECIPIENT]):
+        print(f"⚠️ [{now()}] Email configuration is incomplete. Cannot send report. Please set EMAIL variables.", flush=True)
+        await send_whatsapp(f"⚠️ Daily report was generated ({filename}) but cannot be sent. Email configuration is missing.")
+        return
+
+    print(f"✉️ [{now()}] Preparing to email report to {EMAIL_RECIPIENT}...", flush=True)
+    
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = EMAIL_RECIPIENT
+        msg['Subject'] = f"GFDL Scanner Daily Report - {date.today().strftime('%Y-%m-%d')}"
+
+        body = f"Attached is the GFDL Scanner report for {date.today()}.\nTotal alerts: {len(daily_alerts)}"
+        msg.attach(MIMEText(body, 'plain'))
+
+        with open(filepath, "rb") as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f"attachment; filename= {filename}")
+        msg.attach(part)
+
+        # Blocking email call running in executor
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, send_email_blocking, msg)
+        
+        print(f"✅ [{now()}] Email sent successfully!", flush=True)
+        await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent to {EMAIL_RECIPIENT}.")
+        os.remove(filepath) # Clean up the file after sending
+    except Exception as e:
+        print(f"❌ [{now()}] Failed to send email: {e}", flush=True)
+        await send_whatsapp(f"❌ Failed to email the daily report. Please check the logs. Error: {e}")
+
+def send_email_blocking(msg):
+    """Blocking function to send an email."""
+    import smtplib
+    server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
+    server.starttls()
+    server.login(EMAIL_USER, EMAIL_PASS)
+    text = msg.as_string()
+    server.sendmail(EMAIL_USER, EMAIL_RECIPIENT, text)
+    server.quit()
+
 
 if __name__ == "__main__":
     print("🚀 GFDL Scanner Starting...", flush=True)
