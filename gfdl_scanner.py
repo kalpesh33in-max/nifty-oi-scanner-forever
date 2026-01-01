@@ -56,7 +56,8 @@ if missing_vars:
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 
 # --- WhatsApp Alerting (UltraMSG) ---
-ULTRAMSG_API_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
+ULTRAMSG_API_URL_CHAT = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
+ULTRAMSG_API_URL_DOCUMENT = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/document"
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
@@ -142,24 +143,64 @@ def now():
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
 
 async def send_whatsapp(msg: str):
-    """Sends a message to the configured UltraMSG group without blocking the event loop."""
-    print(f"📦 [{now()}] Preparing to send WhatsApp message...", flush=True)
+    """Sends a text message to the configured UltraMSG group without blocking."""
+    print(f"📦 [{now()}] Preparing to send WhatsApp text message...", flush=True)
     loop = asyncio.get_running_loop()
     
     params = {'token': ULTRAMSG_TOKEN, 'to': ULTRAMSG_GROUP_ID, 'body': msg, 'priority': 10}
     
-    # Use functools.partial to prepare the blocking function with its arguments
-    blocking_call = functools.partial(requests.post, ULTRAMSG_API_URL, params=params, timeout=10)
+    blocking_call = functools.partial(requests.post, ULTRAMSG_API_URL_CHAT, params=params, timeout=10)
 
     try:
-        # Run the blocking call in a separate thread
         response = await loop.run_in_executor(None, blocking_call)
         response.raise_for_status() 
-        print(f"✅ [{now()}] WhatsApp message sent successfully. Response: {response.text}", flush=True)
+        print(f"✅ [{now()}] WhatsApp text message sent successfully. Response: {response.text}", flush=True)
     except requests.exceptions.RequestException as e:
-        print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}", flush=True)
+        print(f"❌ [{now()}] FAILED to send WhatsApp text message: {e}", flush=True)
     except Exception as e:
-        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}", flush=True)
+        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp text: {e}", flush=True)
+
+async def send_whatsapp_with_attachment(filepath: str, caption: str):
+    """Sends a file attachment to the configured UltraMSG group."""
+    print(f"📎 [{now()}] Preparing to send WhatsApp attachment: {filepath}", flush=True)
+    if not os.path.exists(filepath):
+        print(f"❌ [{now()}] File not found for attachment: {filepath}", flush=True)
+        return
+
+    loop = asyncio.get_running_loop()
+    
+    payload = {
+        'token': ULTRAMSG_TOKEN,
+        'to': ULTRAMSG_GROUP_ID,
+        'caption': caption,
+        'filename': os.path.basename(filepath)
+    }
+    
+    try:
+        with open(filepath, "rb") as f:
+            files = {'document': f}
+            
+            # Use functools.partial to prepare the blocking multipart post request
+            blocking_call = functools.partial(
+                requests.post,
+                ULTRAMSG_API_URL_DOCUMENT,
+                params=payload,
+                files=files,
+                timeout=30  # Increased timeout for file uploads
+            )
+
+            # Run the blocking call in a separate thread
+            response = await loop.run_in_executor(None, blocking_call)
+            response.raise_for_status()
+            
+        print(f"✅ [{now()}] WhatsApp attachment sent successfully. Response: {response.text}", flush=True)
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"❌ [{now()}] FAILED to send WhatsApp attachment: {e}", flush=True)
+        return False
+    except Exception as e:
+        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp attachment: {e}", flush=True)
+        return False
 
 # ==============================================================================
 # =============================== CORE LOGIC ===================================
@@ -188,20 +229,111 @@ def lot_bucket(lots, symbol):
     
     return "IGNORE" # Should not be reached if alert thresholds are met
 
-def classify_option(oi_change, price_change, symbol):
-    """Classifies option activity based on OI and Price change."""
+
+
+def get_future_market_meaning(future_price_chg: float, future_oi_chg: float) -> str:
+    """Classifies the overall market meaning based on future price and OI changes."""
+    if future_price_chg > 0 and future_oi_chg > 0:
+        return "Long Build-Up (Strong Bullish)"
+    elif future_price_chg < 0 and future_oi_chg > 0:
+        return "Short Build-Up (Strong Bearish)"
+    elif future_price_chg > 0 and future_oi_chg < 0:
+        return "Short Covering (Relief Up)"
+    elif future_price_chg < 0 and future_oi_chg < 0:
+        return "Long Unwinding (Weak / Distribution)"
+    return "Neutral/Indecisive Future Movement"
+
+
+def classify_market_action_advanced(symbol: str, option_oi_chg: float, option_price_chg: float,
+                                    future_price_chg: float, future_oi_chg: float) -> str:
+    """
+    Classifies market activity based on option OI/Price changes and
+    underlying future Price/OI changes, following user-defined logic.
+    """
     is_call, is_put = "CE" in symbol, "PE" in symbol
-    if oi_change > 0:  # OI Increased
-        if (is_call and price_change <= 0) or (is_put and price_change >= 0):
-            return "Option Writing"
-        else:  # (is_call and price_change > 0) or (is_put and price_change < 0)
-            return "Option Buying"
-    elif oi_change < 0:  # OI Decreased
-        if (is_call and price_change >= 0) or (is_put and price_change <= 0):
-            return "Short Covering / Writer Exit"
-        else:  # (is_call and price_change < 0) or (is_put and price_change > 0)
-            return "Long Unwinding / Liquidation"
-    return "Indecisive" # Should not be reached
+
+    # Step 1: Directional biases from Future
+    future_is_up = future_price_chg > 0
+    future_is_down = future_price_chg < 0
+    
+    # Helper for option OI/Price directions
+    option_oi_increased = option_oi_chg > 0
+    option_oi_decreased = option_oi_chg < 0
+    option_price_increased = option_price_chg > 0
+    option_price_decreased = option_price_chg < 0
+    option_price_flat = option_price_chg == 0
+
+    # User's specific scenarios, ordered by priority of conditions
+    # 🟢 TRUE PE WRITING (BEST SIGNAL): PE OI ↑ AND FUTURE PRICE ↑ AND PE Option Price ↓ or Flat
+    if is_put and option_oi_increased and future_is_up and (option_price_decreased or option_price_flat):
+        return "🟢 True PE Writing (High-Confidence Bullish)"
+
+    # 🔴 TRUE CE WRITING: CE OI ↑ AND FUTURE ↓ AND CE Option Price ↓ or Flat
+    if is_call and option_oi_increased and future_is_down and (option_price_decreased or option_price_flat):
+        return "🔴 True CE Writing (High-Confidence Bearish)"
+
+    # 🚀 BREAKOUT/CE TRAP: CE OI ↑ AND FUTURE ↑ AND CE Option Price ↑
+    if is_call and option_oi_increased and future_is_up and option_price_increased:
+        return "🚀 Breakout / CE Trap (Explosive Bullish)"
+
+    # 🔻 BREAKDOWN/PUT TRAP: PE OI ↑ AND FUTURE ↓ AND PE Option Price ↑
+    if is_put and option_oi_increased and future_is_down and option_price_increased:
+        return "🔻 Breakdown / PE Trap (Explosive Bearish)"
+
+    # Now, handle the "OPTION PRICE LIES" and "FALSE WRITING" conditions,
+    # and general cases where no specific pattern matches.
+    # These are specific overrides based on future direction.
+
+    # ❌ EXAMPLE 4 — FALSE WRITING (REJECT): CE OI ↑ CE Price ↓ Future ↑
+    # In this case, CE OI increased, CE price decreased (suggesting writing), but future is bullish. Trust future.
+    if is_call and option_oi_increased and option_price_decreased and future_is_up:
+        return "❌ False CE Writing (Future Bullish, Reject Writing)"
+
+    # 🔴 EXAMPLE 2 — OPTION PRICE LIES (IGNORE IT): PE OI ↑ Future ↑ PE Price ↑
+    # In this case, PE OI increased with PE Price increased, but future is bullish. Ignore PE Price increase (often due to IV/panic).
+    if is_put and option_oi_increased and option_price_increased and future_is_up:
+        return "🔴 PE Buying (Option Price Lies - Still Bullish)"
+
+    # General OI Increase / Decrease, considering future direction for better context
+    if option_oi_increased:
+        if is_call: # CE OI increased
+            if future_is_up: # Market is bullish, but CE OI increased. Could be hedging or speculative buying.
+                return "CE OI Increased (Future Bullish)"
+            elif future_is_down: # Market is bearish, CE OI increased. Could be CE Writing.
+                return "CE Writing (Future Bearish)"
+            else: # Future flat
+                return "CE OI Increased (Future Flat)"
+        elif is_put: # PE OI increased
+            if future_is_up: # Market is bullish, PE OI increased. Could be PE Writing.
+                return "PE Writing (Future Bullish)"
+            elif future_is_down: # Market is bearish, PE OI increased. Could be hedging or speculative buying.
+                return "PE OI Increased (Future Bearish)"
+            else: # Future flat
+                return "PE OI Increased (Future Flat)"
+    elif option_oi_decreased:
+        if is_call: # CE OI decreased
+            if future_is_up: # Market is bullish, CE OI decreased. Could be CE Short Covering.
+                return "CE Short Covering (Future Bullish)"
+            elif future_is_down: # Market is bearish, CE OI decreased. Could be CE Long Unwinding.
+                return "CE Long Unwinding (Future Bearish)"
+            else: # Future flat
+                return "CE OI Decreased (Future Flat)"
+        elif is_put: # PE OI decreased
+            if future_is_up: # Market is bullish, PE OI decreased. Could be PE Long Unwinding.
+                return "PE Long Unwinding (Future Bullish)"
+            elif future_is_down: # Market is bearish, PE OI decreased. Could be PE Short Covering.
+                return "PE Short Covering (Future Bearish)"
+            else: # Future flat
+                return "PE OI Decreased (Future Flat)"
+    
+    # Fallback if no specific condition met or no significant OI change for option
+    if future_is_up:
+        return "Neutral (Future Uptrend)"
+    elif future_is_down:
+        return "Neutral (Future Downtrend)"
+    
+    return "Indecisive Option Movement"
+
 
 def get_option_moneyness(symbol, future_prices):
     """
@@ -256,7 +388,7 @@ def get_option_moneyness(symbol, future_prices):
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness):
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price):
     """Formats the alert message, showing N/A for missing IV."""
     price_chg_val = state['price'] - state['price_prev']
     price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
@@ -305,6 +437,7 @@ def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, mo
 {strike_moneyness_line}
 ACTION: {action}
 SIZE: {bucket} ({lots} lots)
+FUTURE: {future_price:.2f}
 EXISTING OI: {state['oi_prev']}
 OI Δ: {oi_chg}
 OI RoC: {oi_roc:.2f}%
@@ -336,10 +469,18 @@ async def process_data(data):
         return
 
     new_price = data.get("LastTradePrice")
-    if new_price is None:
+    new_oi = data.get("OpenInterest") # Crucially, also get OI for futures
+    
+    if new_price is None or new_oi is None: # Both are now essential for tracking
         return
 
-    # If the symbol is a future, update its price and stop processing
+    state = symbol_data_state[symbol]
+    
+    # Update previous and current price and OI for ALL monitored symbols (futures and options)
+    state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
+    state["price"], state["oi"] = new_price, new_oi
+
+    # If the symbol is a future, update its corresponding entry in future_prices and stop processing
     if "FUT" in symbol:
         underlying = None
         if "HDFCBANK" in symbol: underlying = "HDFCBANK"
@@ -347,19 +488,45 @@ async def process_data(data):
         elif "SBIN" in symbol: underlying = "SBIN"
         elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
         
-        if underlying and new_price > 0: # Ensure price is valid
+        if underlying and new_price > 0: # Ensure price is valid before updating
             future_prices[underlying] = new_price
-        return
+        
+        # Log the update for futures for visibility
+        print(f"📈 [{now()}] Updated FUTURE {symbol}: Price={new_price}, OI={new_oi}", flush=True)
+        return # Important: stop here for futures, as the rest of the function is for option alerts
 
     # --- Standard processing for Option contracts ---
-    state = symbol_data_state[symbol]
-    new_oi = data.get("OpenInterest")
+    
+    # Identify the underlying for the current option symbol and calculate its changes
+    underlying_name = None
+    for name in LOT_SIZES: # Iterate through known underlying names
+        if name in symbol:
+            underlying_name = name
+            break
+    
+    underlying_future_symbol = None
+    future_price_chg = 0
+    future_oi_chg = 0
+    
+    if underlying_name:
+        # Extract expiry from the option symbol to construct the future symbol
+        # Example: BANKNIFTY27JAN2659000CE -> BANKNIFTY27JAN26FUT
+        match = re.search(r'(' + re.escape(underlying_name) + r'\d{2}[A-Z]{3}\d{2})', symbol)
+        if match:
+            # The expiry part extracted directly from the option symbol
+            expiry_and_year = symbol[len(underlying_name):match.end(1) - len(underlying_name)] # e.g., '27JAN26'
+            underlying_future_symbol = f"{underlying_name}{expiry_and_year}FUT"
 
-    if new_oi is None:
-        return
-
-    state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
-    state["price"], state["oi"] = new_price, new_oi
+    if underlying_future_symbol and underlying_future_symbol in symbol_data_state:
+        future_state = symbol_data_state[underlying_future_symbol]
+        if future_state["price_prev"] != 0 and future_state["oi_prev"] != 0:
+            future_price_chg = future_state["price"] - future_state["price_prev"]
+            future_oi_chg = future_state["oi"] - future_state["oi_prev"]
+            # print(f"DEBUG: {symbol} Underlying Future ({underlying_future_symbol}) Price Chg: {future_price_chg:.2f}, OI Chg: {future_oi_chg}", flush=True) # Debugging line
+        else:
+            print(f"ℹ️ [{now()}] {symbol}: Underlying Future ({underlying_future_symbol}) not fully initialized, cannot calculate changes.", flush=True)
+    else:
+        print(f"⚠️ [{now()}] {symbol}: Could not identify underlying future symbol or its state.", flush=True)
 
     if state["oi_prev"] == 0:
         print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.", flush=True)
@@ -371,6 +538,7 @@ async def process_data(data):
 
     # --- Calculations ---
     price_chg = state["price"] - state["price_prev"]
+    
     
     try:
         oi_roc = (oi_chg / state["oi_prev"]) * 100
@@ -398,7 +566,15 @@ async def process_data(data):
             moneyness = get_option_moneyness(symbol, future_prices)
             if moneyness in ["ITM", "ATM"]:
                 print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_option(oi_chg, price_chg, symbol)
+                action = classify_market_action_advanced(symbol, oi_chg, price_chg, future_price_chg, future_oi_chg)
+                
+                # Get the underlying and its future price to pass to the message formatter
+                underlying = None
+                for name in LOT_SIZES:
+                    if name in symbol:
+                        underlying = name
+                        break
+                current_future_price = future_prices.get(underlying, 0)
                 
                 # --- Data Capture for Excel Report ---
                 try:
@@ -427,7 +603,7 @@ async def process_data(data):
                 daily_alerts.append(alert_data)
                 # --- End Data Capture ---
 
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness)
+                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, current_future_price)
                 await send_whatsapp(alert_msg)
 
 async def run_scanner():
@@ -493,7 +669,10 @@ async def run_scanner():
             await asyncio.sleep(30)
 
 async def generate_and_email_report():
-    """Generates an Excel report from daily_alerts and emails it."""
+    """
+    Generates an Excel report from daily_alerts and emails it.
+    Falls back to sending the report via WhatsApp if email fails.
+    """
     if not daily_alerts:
         print(f"ℹ️ [{now()}] No alerts were generated today. Skipping report.", flush=True)
         await send_whatsapp("ℹ️ GFDL Scanner recorded no significant alerts today. No report was generated.")
@@ -501,12 +680,11 @@ async def generate_and_email_report():
 
     print(f"📝 [{now()}] Generating Excel report with {len(daily_alerts)} alerts...", flush=True)
     
-    # --- Create Excel File in Memory ---
+    filepath = None
     try:
         df = pd.DataFrame(daily_alerts)
         filename = f"GFDL_Scanner_Report_{date.today().strftime('%Y-%m-%d')}.xlsx"
         
-        # Use a temporary directory to save the file
         temp_dir = os.path.join(os.getcwd(), 'temp_reports')
         os.makedirs(temp_dir, exist_ok=True)
         filepath = os.path.join(temp_dir, filename)
@@ -515,53 +693,70 @@ async def generate_and_email_report():
         print(f"✅ [{now()}] Successfully created Excel report: {filepath}", flush=True)
     except Exception as e:
         print(f"❌ [{now()}] Failed to create Excel file: {e}", flush=True)
+        await send_whatsapp(f"❌ Critical error: Failed to generate the daily Excel report. Error: {e}")
         return
 
-    # --- Send Email with Attachment ---
-    if not all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_RECIPIENT]):
-        print(f"⚠️ [{now()}] Email configuration is incomplete. Cannot send report. Please set EMAIL variables.", flush=True)
-        await send_whatsapp(f"⚠️ Daily report was generated ({filename}) but cannot be sent. Email configuration is missing.")
-        return
+    # --- Attempt to send Email with Attachment ---
+    email_sent = False
+    if all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_RECIPIENT]):
+        print(f"✉️ [{now()}] Preparing to email report to {EMAIL_RECIPIENT}...", flush=True)
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = EMAIL_USER
+            msg['To'] = EMAIL_RECIPIENT
+            msg['Subject'] = f"GFDL Scanner Daily Report - {date.today().strftime('%Y-%m-%d')}"
+            body = f"Attached is the GFDL Scanner report for {date.today()}.\nTotal alerts: {len(daily_alerts)}"
+            msg.attach(MIMEText(body, 'plain'))
 
-    print(f"✉️ [{now()}] Preparing to email report to {EMAIL_RECIPIENT}...", flush=True)
+            with open(filepath, "rb") as attachment:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f"attachment; filename= {os.path.basename(filepath)}")
+            msg.attach(part)
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, send_email_blocking, msg)
+            
+            print(f"✅ [{now()}] Email sent successfully!", flush=True)
+            await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent via email to {EMAIL_RECIPIENT}.")
+            email_sent = True
+
+        except Exception as e:
+            print(f"❌ [{now()}] Failed to send email: {e}. Falling back to WhatsApp.", flush=True)
+            # Send notification about email failure before attempting WhatsApp fallback
+            await send_whatsapp(f"⚠️ Could not send daily report to {EMAIL_RECIPIENT} via email due to a network error. Attempting to send via WhatsApp instead.")
     
-    try:
-        import smtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-        from email.mime.base import MIMEBase
-        from email import encoders
+    else:
+        print(f"⚠️ [{now()}] Email configuration is incomplete. Skipping email and sending to WhatsApp.", flush=True)
+        await send_whatsapp(f"⚠️ Email not configured. Sending daily report via WhatsApp.")
 
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
-        msg['To'] = EMAIL_RECIPIENT
-        msg['Subject'] = f"GFDL Scanner Daily Report - {date.today().strftime('%Y-%m-%d')}"
+    # --- Fallback to WhatsApp if Email Failed ---
+    if not email_sent:
+        print(f"📲 [{now()}] Attempting to send report via WhatsApp attachment...", flush=True)
+        caption = f"Daily Report ({date.today().strftime('%Y-%m-%d')})\nTotal Alerts: {len(daily_alerts)}"
+        success = await send_whatsapp_with_attachment(filepath, caption)
+        if success:
+            print(f"✅ [{now()}] WhatsApp attachment sent successfully.", flush=True)
+            await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent to this group.")
+        else:
+            print(f"❌ [{now()}] FAILED to send report via WhatsApp attachment.", flush=True)
+            await send_whatsapp(f"❌ CRITICAL: Failed to send the daily report via both email and WhatsApp. Please check the logs. The report file is stored at: {filepath}")
 
-        body = f"Attached is the GFDL Scanner report for {date.today()}.\nTotal alerts: {len(daily_alerts)}"
-        msg.attach(MIMEText(body, 'plain'))
+    # --- Cleanup ---
+    # Clean up the file only if it was successfully sent via either method.
+    # If both fail, the file remains for manual retrieval.
+    if email_sent:
+        try:
+            os.remove(filepath)
+            print(f"🗑️ [{now()}] Cleaned up temporary report file: {filepath}", flush=True)
+        except OSError as e:
+            print(f"⚠️ [{now()}] Warning: Failed to remove temporary report file {filepath}. Error: {e}", flush=True)
 
-        with open(filepath, "rb") as attachment:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition', f"attachment; filename= {filename}")
-        msg.attach(part)
-
-        # Blocking email call running in executor
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, send_email_blocking, msg)
-        
-        print(f"✅ [{now()}] Email sent successfully!", flush=True)
-        await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent to {EMAIL_RECIPIENT}.")
-        os.remove(filepath) # Clean up the file after sending
-    except Exception as e:
-        print(f"❌ [{now()}] Failed to send email: {e}", flush=True)
-        await send_whatsapp(f"❌ Failed to email the daily report. Please check the logs. Error: {e}")
 
 def send_email_blocking(msg):
     """Blocking function to send an email."""
-    import smtplib
-    server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
+    server = smtplib.SMTP(EMAIL_HOST, int(EMAIL_PORT))
     server.starttls()
     server.login(EMAIL_USER, EMAIL_PASS)
     text = msg.as_string()
