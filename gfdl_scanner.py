@@ -15,11 +15,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+import copy
 
 
 # ==============================================================================
 # ============================== CONFIGURATION =================================
 # ==============================================================================
+
+# --- Analysis Interval ---
+ANALYSIS_INTERVAL_SECONDS = 15
 
 # --- Email Configuration (for daily reports) ---
 # IMPORTANT: Use environment variables in production for security
@@ -118,12 +122,9 @@ LOT_THRESHOLDS = {
 # =============================== STATE & UTILITIES ============================
 # ==============================================================================
 
-# State now supports None for IV to track missing data
+# Live state, updated on every tick
 symbol_data_state = {
-    symbol: {
-        "price": 0, "price_prev": 0,
-        "oi": 0, "oi_prev": 0,
-    } for symbol in SYMBOLS_TO_MONITOR
+    symbol: { "price": 0, "oi": 0 } for symbol in SYMBOLS_TO_MONITOR
 }
 
 # --- Globals for Daily Reporting ---
@@ -161,11 +162,14 @@ async def send_whatsapp(msg: str):
         print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp text: {e}", flush=True)
 
 async def send_whatsapp_with_attachment(filepath: str, caption: str):
-    """Sends a file attachment to the configured UltraMSG group."""
+    """
+    Sends a file attachment to the configured UltraMSG group.
+    Returns True on success, False on failure.
+    """
     print(f"📎 [{now()}] Preparing to send WhatsApp attachment: {filepath}", flush=True)
     if not os.path.exists(filepath):
         print(f"❌ [{now()}] File not found for attachment: {filepath}", flush=True)
-        return
+        return False
 
     loop = asyncio.get_running_loop()
     
@@ -176,27 +180,41 @@ async def send_whatsapp_with_attachment(filepath: str, caption: str):
         'filename': os.path.basename(filepath)
     }
     
+    response = None # Define response here to make it available in exception blocks
     try:
         with open(filepath, "rb") as f:
             files = {'document': f}
             
-            # Use functools.partial to prepare the blocking multipart post request
             blocking_call = functools.partial(
                 requests.post,
                 ULTRAMSG_API_URL_DOCUMENT,
                 params=payload,
                 files=files,
-                timeout=30  # Increased timeout for file uploads
+                timeout=30
             )
 
-            # Run the blocking call in a separate thread
             response = await loop.run_in_executor(None, blocking_call)
             response.raise_for_status()
             
-        print(f"✅ [{now()}] WhatsApp attachment sent successfully. Response: {response.text}", flush=True)
-        return True
+            response_json = response.json()
+            
+            if response_json.get('error'):
+                error_msg = response_json['error']
+                print(f"❌ [{now()}] WhatsApp attachment FAILED. API Error: {error_msg}. Response: {response.text}", flush=True)
+                return False
+
+            if response_json.get('sent') == 'true' or response_json.get('sent') is True:
+                 print(f"✅ [{now()}] WhatsApp attachment sent successfully. Response: {response.text}", flush=True)
+                 return True
+            else:
+                 print(f"❌ [{now()}] WhatsApp attachment FAILED. Unknown API Response: {response.text}", flush=True)
+                 return False
+
     except requests.exceptions.RequestException as e:
-        print(f"❌ [{now()}] FAILED to send WhatsApp attachment: {e}", flush=True)
+        print(f"❌ [{now()}] FAILED to send WhatsApp attachment due to a network error: {e}", flush=True)
+        return False
+    except json.JSONDecodeError:
+        print(f"❌ [{now()}] FAILED to parse API response. Not valid JSON. Raw Response: {response.text if response else 'N/A'}", flush=True)
         return False
     except Exception as e:
         print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp attachment: {e}", flush=True)
@@ -228,20 +246,6 @@ def lot_bucket(lots, symbol):
         if lots >= 50: return "LOW"
     
     return "IGNORE" # Should not be reached if alert thresholds are met
-
-
-
-def get_future_market_meaning(future_price_chg: float, future_oi_chg: float) -> str:
-    """Classifies the overall market meaning based on future price and OI changes."""
-    if future_price_chg > 0 and future_oi_chg > 0:
-        return "Long Build-Up (Strong Bullish)"
-    elif future_price_chg < 0 and future_oi_chg > 0:
-        return "Short Build-Up (Strong Bearish)"
-    elif future_price_chg > 0 and future_oi_chg < 0:
-        return "Short Covering (Relief Up)"
-    elif future_price_chg < 0 and future_oi_chg < 0:
-        return "Long Unwinding (Weak / Distribution)"
-    return "Neutral/Indecisive Future Movement"
 
 
 def classify_market_action_advanced(symbol: str, option_oi_chg: float, option_price_chg: float,
@@ -340,128 +344,172 @@ def get_option_moneyness(symbol, future_prices):
     Checks if an option is ITM, ATM, or OTM based on the latest future price.
     Returns a string: "ITM", "ATM", or "OTM".
     """
-    # This filter does not apply to future contracts themselves
     if "FUT" in symbol:
         return "N/A"
 
-    # Identify underlying and get its future price
-    underlying = None
-    if "HDFCBANK" in symbol: underlying = "HDFCBANK"
-    elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
-    elif "SBIN" in symbol: underlying = "SBIN"
-    elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
-
+    underlying = next((name for name in LOT_SIZES if name in symbol), None)
     if not underlying:
-        return "N/A" # If it's not one of our known underlyings, don't block it
+        return "N/A" 
 
     future_price = future_prices.get(underlying)
     if not future_price or future_price == 0:
         print(f"⏳ [{now()}] {symbol}: Waiting for future price of {underlying} to check moneyness.", flush=True)
-        return "OTM" # Treat as OTM if we don't have the future price yet
+        return "OTM"
 
-    # Extract strike and type
     try:
-        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
-        strike_price = int(match.group(2))
-        option_type = match.group(3)
+        match = re.search(r'.*?(\d+)(CE|PE)$', symbol)
+        strike_price = int(match.group(1))
+        option_type = match.group(2)
     except (AttributeError, TypeError, ValueError):
-        return "N/A" # If we can't parse the option, don't block it
+        return "N/A"
 
-    # Define ATM band (0.5% of future price)
     atm_band = future_price * 0.005
-    
-    # Check ATM first
     if abs(future_price - strike_price) <= atm_band:
         return "ATM"
     
-    # Check ITM
-    is_itm = False
-    if option_type == 'CE' and strike_price < future_price:
-        is_itm = True
-    if option_type == 'PE' and strike_price > future_price:
-        is_itm = True
+    is_itm = (option_type == 'CE' and strike_price < future_price) or \
+             (option_type == 'PE' and strike_price > future_price)
 
     if is_itm:
         return "ITM"
     else:
-        # If not ATM and not ITM, it must be OTM
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price):
-    """Formats the alert message, showing N/A for missing IV."""
-    price_chg_val = state['price'] - state['price_prev']
-    price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
+
+def format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness, future_price, future_price_chg, future_past_state, future_oi_chg, future_oi_roc):
+    """Formats the alert message based on the 15-second interval changes."""
+    option_price_chg = live_state['price'] - past_state['price']
+    option_price_dir = "↑" if option_price_chg > 0 else ("↓" if option_price_chg < 0 else "↔")
+    future_price_dir = "↑" if future_price_chg > 0 else ("↓" if future_price_chg < 0 else "↔")
     
-    # Dynamically determine product name
-    product_name = "UNKNOWN" # Default
-    if "HDFCBANK" in symbol:
-        product_name = "HDFCBANK"
-    elif "ICICIBANK" in symbol:
-        product_name = "ICICI" # As requested by user
-    elif "SBIN" in symbol:
-        product_name = "SBIN"
-    elif "BANKNIFTY" in symbol:
-        product_name = "BANKNIFTY"
+    product_name = next((name for name in LOT_SIZES if name in symbol), "UNKNOWN")
 
-    year, strike_display, option_type_display = "", "", ""
-    is_future = "FUT" in symbol # Determine if it's a future
-
-    try:
-        if is_future:
-            match = re.search(r'.*?(\d{2})FUT$', symbol)
+    strike_display, option_type_display = "", ""
+    is_future = "FUT" in symbol
+    if not is_future:
+        try:
+            match = re.search(r'.*?(\d+)(CE|PE)$', symbol)
             if match:
-                year = match.group(1)
-            strike_display = "FUT" # For internal logic, but won't be displayed in main_message
-            option_type_display = ""
-        else: # For options
-            match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
-            if match:
-                year = match.group(1)
-                strike_display = match.group(2)
-                option_type_display = match.group(3)
-            else: # Fallback for old format without date
-                match = re.search(r'(\d+)(CE|PE)$', symbol)
                 strike_display = match.group(1)
                 option_type_display = match.group(2)
-    except Exception:
-        year, strike_display, option_type_display = "", "N/A", "" # Fallback if parsing completely fails
+        except Exception:
+            strike_display, option_type_display = "N/A", ""
 
-    # Construct the strike line conditionally
-    strike_moneyness_line = ""
-    if not is_future:
-        strike_moneyness_line = f"STRIKE: {strike_display}{option_type_display} {moneyness}"
+    if is_future:
+        second_line_content = f"{product_name} FUTURE"
+    else:
+        second_line_content = f"{product_name} STRIKE: {strike_display}{option_type_display} {moneyness}"
 
     main_message = f"""
-{product_name} | {'FUTURE' if is_future else 'OPTION'}
-{strike_moneyness_line}
 ACTION: {action}
+{second_line_content}
 SIZE: {bucket} ({lots} lots)
-FUTURE: {future_price:.2f}
-EXISTING OI: {state['oi_prev']}
+EXISTING OI: {past_state['oi']}
 OI Δ: {oi_chg}
 OI RoC: {oi_roc:.2f}%
-PRICE: {price_dir}
+OPTION PRICE: {live_state['price']:.2f} {option_price_dir}
+FUTURE: {future_price:.2f} {future_price_dir}
+FUTURE EXISTING OI: {future_past_state['oi']}
+FUTURE OI Δ: {future_oi_chg}
+FUTURE OI RoC: {future_oi_roc:.2f}%
 TIME: {now()}
 """
 
-    added_section = f"""
-{year} {product_name} {'FUT' if is_future else f'{strike_display}{option_type_display}'}
+    final_price_line = f"{live_state['price']:.2f}"
 
-{state['price']:.2f}
-"""
+    return f"{main_message}\n{final_price_line}"
 
-    return f"{main_message}\n\n{added_section}"
+# ==============================================================================
+# ======================== INTERVAL-BASED ANALYSIS =============================
+# ==============================================================================
+
+async def analyze_interval_changes(snapshot_state):
+    """
+    Compares the live state against a past snapshot to find significant changes
+    over the defined interval and sends alerts.
+    """
+    print(f"🔬 [{now()}] Analyzing {ANALYSIS_INTERVAL_SECONDS}-second interval...", flush=True)
+    global symbol_data_state, future_prices, daily_alerts
+
+    for symbol in SYMBOLS_TO_MONITOR:
+        if "FUT" in symbol:
+            continue
+
+        live_state = symbol_data_state[symbol]
+        past_state = snapshot_state[symbol]
+
+        if past_state.get("oi", 0) == 0 or live_state.get("oi", 0) == 0:
+            continue
+
+        oi_chg = live_state["oi"] - past_state["oi"]
+        if oi_chg == 0:
+            continue
+        
+        lots = lots_from_oi_change(symbol, oi_chg)
+        alert_threshold = next((t for name, t in LOT_THRESHOLDS.items() if name in symbol), 0)
+
+        if alert_threshold > 0 and lots >= alert_threshold:
+            print(f"🚨 [{now()}] {symbol}: Lot size {lots} >= {alert_threshold}. Potential Alert.", flush=True)
+            
+            bucket = lot_bucket(lots, symbol)
+            moneyness = get_option_moneyness(symbol, future_prices)
+            
+            if bucket != "IGNORE" and moneyness in ["ITM", "ATM"]:
+                option_price_chg = live_state["price"] - past_state["price"]
+                try:
+                    oi_roc = (oi_chg / past_state["oi"]) * 100
+                except ZeroDivisionError:
+                    oi_roc = 0.0
+
+                underlying_name = next((name for name in LOT_SIZES if name in symbol), None)
+                future_price_chg, future_oi_chg, future_oi_roc = 0, 0, 0.0
+                future_past_state = {"oi": 0} # Default empty state
+                
+                if underlying_name:
+                    expiry_match = re.search(r'(' + re.escape(underlying_name) + r'\d{2}[A-Z]{3}\d{2})', symbol)
+                    if expiry_match:
+                        expiry_and_year = symbol[len(underlying_name):expiry_match.end(1) - len(underlying_name)]
+                        future_symbol = f"{underlying_name}{expiry_and_year}FUT"
+                        
+                        if future_symbol in symbol_data_state and future_symbol in snapshot_state:
+                            future_live_state = symbol_data_state[future_symbol]
+                            future_past_state = snapshot_state[future_symbol]
+                            if future_past_state.get("price", 0) > 0 and future_past_state.get("oi", 0) > 0:
+                                future_price_chg = future_live_state["price"] - future_past_state["price"]
+                                future_oi_chg = future_live_state["oi"] - future_past_state["oi"]
+                                try:
+                                    future_oi_roc = (future_oi_chg / future_past_state["oi"]) * 100
+                                except ZeroDivisionError:
+                                    future_oi_roc = 0.0
+                
+                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                action = classify_market_action_advanced(symbol, oi_chg, option_price_chg, future_price_chg, future_oi_chg)
+                
+                current_future_price = future_prices.get(underlying_name, 0)
+                
+                product_name = underlying_name or "N/A"
+                match = re.search(r'(\d+)(CE|PE)$', symbol)
+                strike, option_type = (match.group(1), match.group(2)) if match else ("FUT", "")
+
+                alert_data = {
+                    "time": now(), "symbol": product_name, "strike": strike,
+                    "ce/pe": option_type, "action": action, "lot size": lots,
+                    "EXISTING OI": past_state['oi'], "OI Δ": oi_chg,
+                    "OI RoC": f"{oi_roc:.2f}%", "price": "↑" if option_price_chg > 0 else "↓" if option_price_chg < 0 else "↔",
+                    "strike price": live_state['price']
+                }
+                daily_alerts.append(alert_data)
+                
+                alert_msg = format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness, current_future_price, future_price_chg, future_past_state, future_oi_chg, future_oi_roc)
+                await send_whatsapp(alert_msg)
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
 # ==============================================================================
 
 async def process_data(data):
-    """
-    Processes a single data packet, updating future prices or sending option alerts.
-    Option alerts are filtered to only include ITM/ATM strikes.
-    """
+    """Processes a single data packet just to update the live symbol state."""
     global symbol_data_state, future_prices
     
     symbol = data.get("InstrumentIdentifier")
@@ -469,152 +517,28 @@ async def process_data(data):
         return
 
     new_price = data.get("LastTradePrice")
-    new_oi = data.get("OpenInterest") # Crucially, also get OI for futures
+    new_oi = data.get("OpenInterest")
     
-    if new_price is None or new_oi is None: # Both are now essential for tracking
+    if new_price is None or new_oi is None:
         return
 
-    state = symbol_data_state[symbol]
-    
-    # Update previous and current price and OI for ALL monitored symbols (futures and options)
-    state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
-    state["price"], state["oi"] = new_price, new_oi
+    symbol_data_state[symbol]["price"] = new_price
+    symbol_data_state[symbol]["oi"] = new_oi
 
-    # If the symbol is a future, update its corresponding entry in future_prices and stop processing
     if "FUT" in symbol:
-        underlying = None
-        if "HDFCBANK" in symbol: underlying = "HDFCBANK"
-        elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
-        elif "SBIN" in symbol: underlying = "SBIN"
-        elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
-        
-        if underlying and new_price > 0: # Ensure price is valid before updating
+        underlying = next((name for name in LOT_SIZES if name in symbol), None)
+        if underlying and new_price > 0:
             future_prices[underlying] = new_price
-        
-        # Log the update for futures for visibility
-        print(f"📈 [{now()}] Updated FUTURE {symbol}: Price={new_price}, OI={new_oi}", flush=True)
-        return # Important: stop here for futures, as the rest of the function is for option alerts
-
-    # --- Standard processing for Option contracts ---
-    
-    # Identify the underlying for the current option symbol and calculate its changes
-    underlying_name = None
-    for name in LOT_SIZES: # Iterate through known underlying names
-        if name in symbol:
-            underlying_name = name
-            break
-    
-    underlying_future_symbol = None
-    future_price_chg = 0
-    future_oi_chg = 0
-    
-    if underlying_name:
-        # Extract expiry from the option symbol to construct the future symbol
-        # Example: BANKNIFTY27JAN2659000CE -> BANKNIFTY27JAN26FUT
-        match = re.search(r'(' + re.escape(underlying_name) + r'\d{2}[A-Z]{3}\d{2})', symbol)
-        if match:
-            # The expiry part extracted directly from the option symbol
-            expiry_and_year = symbol[len(underlying_name):match.end(1) - len(underlying_name)] # e.g., '27JAN26'
-            underlying_future_symbol = f"{underlying_name}{expiry_and_year}FUT"
-
-    if underlying_future_symbol and underlying_future_symbol in symbol_data_state:
-        future_state = symbol_data_state[underlying_future_symbol]
-        if future_state["price_prev"] != 0 and future_state["oi_prev"] != 0:
-            future_price_chg = future_state["price"] - future_state["price_prev"]
-            future_oi_chg = future_state["oi"] - future_state["oi_prev"]
-            # print(f"DEBUG: {symbol} Underlying Future ({underlying_future_symbol}) Price Chg: {future_price_chg:.2f}, OI Chg: {future_oi_chg}", flush=True) # Debugging line
-        else:
-            print(f"ℹ️ [{now()}] {symbol}: Underlying Future ({underlying_future_symbol}) not fully initialized, cannot calculate changes.", flush=True)
-    else:
-        print(f"⚠️ [{now()}] {symbol}: Could not identify underlying future symbol or its state.", flush=True)
-
-    if state["oi_prev"] == 0:
-        print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.", flush=True)
-        return
-
-    oi_chg = state["oi"] - state["oi_prev"]
-    if oi_chg == 0:
-        return
-
-    # --- Calculations ---
-    price_chg = state["price"] - state["price_prev"]
-    
-    
-    try:
-        oi_roc = (oi_chg / state["oi_prev"]) * 100
-    except ZeroDivisionError:
-        oi_roc = 0.0
-
-    # --- Alert Logic ---
-    lots = lots_from_oi_change(symbol, oi_chg)
-
-    # Determine the correct lot size threshold for the symbol
-    alert_threshold = 0
-    for name, threshold in LOT_THRESHOLDS.items():
-        if name in symbol:
-            alert_threshold = threshold
-            break
-    
-    if alert_threshold > 0 and lots >= alert_threshold:
-        print(f"🚨 [{now()}] {symbol}: Lot size {lots} >= {alert_threshold}. Potential Alert.", flush=True)
-        
-        bucket = lot_bucket(lots, symbol)
-        
-        # This check is technically redundant now if LOT_THRESHOLDS only contains valid symbols,
-        # but it's good for safety.
-        if bucket != "IGNORE":
-            moneyness = get_option_moneyness(symbol, future_prices)
-            if moneyness in ["ITM", "ATM"]:
-                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_market_action_advanced(symbol, oi_chg, price_chg, future_price_chg, future_oi_chg)
-                
-                # Get the underlying and its future price to pass to the message formatter
-                underlying = None
-                for name in LOT_SIZES:
-                    if name in symbol:
-                        underlying = name
-                        break
-                current_future_price = future_prices.get(underlying, 0)
-                
-                # --- Data Capture for Excel Report ---
-                try:
-                    product_name = next(name for name in LOT_SIZES if name in symbol)
-                    match = re.search(r'(\d+)(CE|PE)$', symbol)
-                    strike, option_type = (match.group(1), match.group(2)) if match else ("FUT", "")
-                except (StopIteration, AttributeError):
-                    product_name, strike, option_type = symbol, "N/A", ""
-
-                price_chg_val = state['price'] - state['price_prev']
-                price_dir = "↑" if price_chg_val > 0 else ("↓" if price_chg_val < 0 else "↔")
-                
-                alert_data = {
-                    "time": now(),
-                    "symbol": product_name,
-                    "strike": strike,
-                    "ce/pe": option_type,
-                    "action": action,
-                    "lot size": lots,
-                    "EXISTING OI": state['oi_prev'],
-                    "OI Δ": oi_chg,
-                    "OI RoC": f"{oi_roc:.2f}%",
-                    "price": price_dir,
-                    "strike price": state['price']
-                }
-                daily_alerts.append(alert_data)
-                # --- End Data Capture ---
-
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, current_future_price)
-                await send_whatsapp(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
-    global report_sent_today, daily_alerts
+    global report_sent_today, daily_alerts, symbol_data_state
     
-    last_check_time = time.time()
+    snapshot_state = copy.deepcopy(symbol_data_state)
+    last_analysis_time = time.time()
     
     while True:
         try:
-            # --- WebSocket Connection Logic ---
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
                 print(f"✅ [{now()}] Connected to WebSocket. Authenticating...", flush=True)
                 
@@ -628,7 +552,6 @@ async def run_scanner():
                     continue
                 
                 print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...", flush=True)
-
                 for symbol in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({
                         "MessageType": "SubscribeRealtime", "Exchange": "NFO",
@@ -639,23 +562,28 @@ async def run_scanner():
 
                 async for message in websocket:
                     try:
-                        # Non-blocking check for daily tasks (runs approx every 60s)
-                        if time.time() - last_check_time > 60:
-                            now_time = datetime.now(ZoneInfo("Asia/Kolkata"))
-                            if now_time.hour == 0 and report_sent_today:
-                                print(f"🌅 [{now()}] New day. Resetting daily report flag.", flush=True)
-                                report_sent_today = False
-                                daily_alerts = []
-                            
-                            if now_time.hour == 15 and now_time.minute >= 45 and not report_sent_today:
-                                print(f"📅 [{now()}] Market closed. Time to generate and send daily report.", flush=True)
-                                await generate_and_email_report()
-                                report_sent_today = True
-                            last_check_time = time.time()
+                        current_time = time.time()
+
+                        if current_time - last_analysis_time > ANALYSIS_INTERVAL_SECONDS:
+                            await analyze_interval_changes(snapshot_state)
+                            snapshot_state = copy.deepcopy(symbol_data_state)
+                            last_analysis_time = current_time
+
+                        now_time = datetime.now(ZoneInfo("Asia/Kolkata"))
+                        if now_time.hour == 0 and report_sent_today:
+                            print(f"🌅 [{now()}] New day. Resetting daily report flag.", flush=True)
+                            report_sent_today = False
+                            daily_alerts = []
+                        
+                        if now_time.hour == 15 and now_time.minute >= 45 and not report_sent_today:
+                            print(f"📅 [{now()}] Market closed. Time to generate and send daily report.", flush=True)
+                            await generate_and_email_report()
+                            report_sent_today = True
 
                         data = json.loads(message)
                         if data.get("MessageType") == "RealtimeResult":
-                            await process_data(data)                        
+                            await process_data(data)
+                                              
                     except json.JSONDecodeError:
                         print(f"⚠️ [{now()}] Warning: Received a non-JSON message.", flush=True)
                     except Exception as e:
@@ -670,8 +598,9 @@ async def run_scanner():
 
 async def generate_and_email_report():
     """
-    Generates an Excel report from daily_alerts and emails it.
-    Falls back to sending the report via WhatsApp if email fails.
+    Generates an Excel report from daily_alerts and sends it directly via WhatsApp.
+    Email functionality is removed to prioritize WhatsApp delivery.
+    If WhatsApp fails, the file remains for manual retrieval.
     """
     if not daily_alerts:
         print(f"ℹ️ [{now()}] No alerts were generated today. Skipping report.", flush=True)
@@ -681,6 +610,7 @@ async def generate_and_email_report():
     print(f"📝 [{now()}] Generating Excel report with {len(daily_alerts)} alerts...", flush=True)
     
     filepath = None
+    whatsapp_sent_success = False # Flag to track WhatsApp sending status
     try:
         df = pd.DataFrame(daily_alerts)
         filename = f"GFDL_Scanner_Report_{date.today().strftime('%Y-%m-%d')}.xlsx"
@@ -696,63 +626,26 @@ async def generate_and_email_report():
         await send_whatsapp(f"❌ Critical error: Failed to generate the daily Excel report. Error: {e}")
         return
 
-    # --- Attempt to send Email with Attachment ---
-    email_sent = False
-    if all([EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_RECIPIENT]):
-        print(f"✉️ [{now()}] Preparing to email report to {EMAIL_RECIPIENT}...", flush=True)
-        try:
-            msg = MIMEMultipart()
-            msg['From'] = EMAIL_USER
-            msg['To'] = EMAIL_RECIPIENT
-            msg['Subject'] = f"GFDL Scanner Daily Report - {date.today().strftime('%Y-%m-%d')}"
-            body = f"Attached is the GFDL Scanner report for {date.today()}.\nTotal alerts: {len(daily_alerts)}"
-            msg.attach(MIMEText(body, 'plain'))
+    # --- Send Report directly via WhatsApp attachment ---
+    print(f"📲 [{now()}] Sending report directly via WhatsApp attachment...", flush=True)
+    caption = f"Daily Report ({date.today().strftime('%Y-%m-%d')})\nTotal Alerts: {len(daily_alerts)}"
+    whatsapp_sent_success = await send_whatsapp_with_attachment(filepath, caption)
 
-            with open(filepath, "rb") as attachment:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f"attachment; filename= {os.path.basename(filepath)}")
-            msg.attach(part)
-
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, send_email_blocking, msg)
-            
-            print(f"✅ [{now()}] Email sent successfully!", flush=True)
-            await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent via email to {EMAIL_RECIPIENT}.")
-            email_sent = True
-
-        except Exception as e:
-            print(f"❌ [{now()}] Failed to send email: {e}. Falling back to WhatsApp.", flush=True)
-            # Send notification about email failure before attempting WhatsApp fallback
-            await send_whatsapp(f"⚠️ Could not send daily report to {EMAIL_RECIPIENT} via email due to a network error. Attempting to send via WhatsApp instead.")
-    
+    if whatsapp_sent_success:
+        await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent to this group.")
     else:
-        print(f"⚠️ [{now()}] Email configuration is incomplete. Skipping email and sending to WhatsApp.", flush=True)
-        await send_whatsapp(f"⚠️ Email not configured. Sending daily report via WhatsApp.")
-
-    # --- Fallback to WhatsApp if Email Failed ---
-    if not email_sent:
-        print(f"📲 [{now()}] Attempting to send report via WhatsApp attachment...", flush=True)
-        caption = f"Daily Report ({date.today().strftime('%Y-%m-%d')})\nTotal Alerts: {len(daily_alerts)}"
-        success = await send_whatsapp_with_attachment(filepath, caption)
-        if success:
-            print(f"✅ [{now()}] WhatsApp attachment sent successfully.", flush=True)
-            await send_whatsapp(f"✅ Daily report with {len(daily_alerts)} alerts has been sent to this group.")
-        else:
-            print(f"❌ [{now()}] FAILED to send report via WhatsApp attachment.", flush=True)
-            await send_whatsapp(f"❌ CRITICAL: Failed to send the daily report via both email and WhatsApp. Please check the logs. The report file is stored at: {filepath}")
+        await send_whatsapp(f"❌ CRITICAL: Failed to send the daily report via WhatsApp. Please check the logs. The report file is stored at: {filepath}")
 
     # --- Cleanup ---
-    # Clean up the file only if it was successfully sent via either method.
-    # If both fail, the file remains for manual retrieval.
-    if email_sent:
+    # Clean up the file only if it was successfully sent via WhatsApp.
+    if whatsapp_sent_success:
         try:
             os.remove(filepath)
             print(f"🗑️ [{now()}] Cleaned up temporary report file: {filepath}", flush=True)
         except OSError as e:
             print(f"⚠️ [{now()}] Warning: Failed to remove temporary report file {filepath}. Error: {e}", flush=True)
 
+# Email sending logic is entirely removed.
 
 def send_email_blocking(msg):
     """Blocking function to send an email."""
@@ -770,7 +663,6 @@ if __name__ == "__main__":
         asyncio.run(run_scanner())
     except KeyboardInterrupt:
         print("\n🛑 Scanner stopped by user.", flush=True)
-        # In a real async app, you'd await this, but for shutdown it's okay to fire and forget
         asyncio.run(send_whatsapp("🛑 GFDL Scanner was stopped manually."))
     except Exception as e:
         error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
