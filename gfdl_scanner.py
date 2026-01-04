@@ -342,7 +342,7 @@ def get_option_moneyness(symbol, future_prices):
         return "OTM"
 
     try:
-        match = re.search(r'.*?(\d+)(CE|PE)$', symbol)
+        match = re.search(r'\d{2}[A-Z]{3}\d{2}(\d+)(CE|PE)$', symbol)
         strike_price = int(match.group(1))
         option_type = match.group(2)
     except (AttributeError, TypeError, ValueError):
@@ -369,7 +369,9 @@ def format_alert_message(symbol, action, bucket, lots, live_state, past_state, o
     
     product_name = next((name for name in LOT_SIZES if name in symbol), "UNKNOWN")
 
-match = re.search(r'\d{2}[A-Z]{3}\d{2}(\d+)(CE|PE)$', symbol)
+    strike_display, option_type_display = "", ""
+    try:
+        match = re.search(r'\d{2}[A-Z]{3}\d{2}(\d+)(CE|PE)$', symbol)
         if match:
             strike_display = match.group(1)
             option_type_display = match.group(2)
