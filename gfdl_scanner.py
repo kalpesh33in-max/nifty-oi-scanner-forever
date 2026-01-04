@@ -62,42 +62,35 @@ WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 # --- WhatsApp Alerting (UltraMSG) ---
 ULTRAMSG_API_URL_CHAT = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
 ULTRAMSG_API_URL_DOCUMENT = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/document"
+ULTRAMSG_API_URL_UPLOAD = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/media/upload"
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
     # BANKNIFTY Options
-    "BANKNIFTY27JAN2659000CE", "BANKNIFTY27JAN2659000PE", "BANKNIFTY27JAN2658900CE", "BANKNIFTY27JAN2658900PE",
-    "BANKNIFTY27JAN2658800CE", "BANKNIFTY27JAN2658800PE", "BANKNIFTY27JAN2658700CE", "BANKNIFTY27JAN2658700PE",
-    "BANKNIFTY27JAN2658600CE", "BANKNIFTY27JAN2658600PE", "BANKNIFTY27JAN2658500CE", "BANKNIFTY27JAN2658500PE",
-    "BANKNIFTY27JAN2659100CE", "BANKNIFTY27JAN2659100PE", "BANKNIFTY27JAN2659200CE", "BANKNIFTY27JAN2659200PE",
-    "BANKNIFTY27JAN2659300CE", "BANKNIFTY27JAN2659300PE", "BANKNIFTY27JAN2659400CE", "BANKNIFTY27JAN2659400PE",
-    "BANKNIFTY27JAN2659500CE", "BANKNIFTY27JAN2659500PE", "BANKNIFTY27JAN2658400CE", "BANKNIFTY27JAN2658400PE",
-    "BANKNIFTY27JAN2658300CE", "BANKNIFTY27JAN2658300PE", "BANKNIFTY27JAN2658200CE", "BANKNIFTY27JAN2658200PE", 
-    "BANKNIFTY27JAN2658100CE", "BANKNIFTY27JAN2658100PE",
+    "BANKNIFTY27JAN2660100CE", "BANKNIFTY27JAN2660100PE", "BANKNIFTY27JAN2660000CE", "BANKNIFTY27JAN2660000PE",
+    "BANKNIFTY27JAN2659900CE", "BANKNIFTY27JAN2659900PE", "BANKNIFTY27JAN2659800CE", "BANKNIFTY27JAN2659800PE",
+    "BANKNIFTY27JAN2659700CE", "BANKNIFTY27JAN2659700PE", "BANKNIFTY27JAN2659600CE", "BANKNIFTY27JAN2659600PE",
+    "BANKNIFTY27JAN2660200CE", "BANKNIFTY27JAN2660200PE", "BANKNIFTY27JAN2660300CE", "BANKNIFTY27JAN2660300PE",
+    "BANKNIFTY27JAN2660400CE", "BANKNIFTY27JAN2660400PE", "BANKNIFTY27JAN2660500CE", "BANKNIFTY27JAN2660500PE",
+    "BANKNIFTY27JAN2660600CE", "BANKNIFTY27JAN2660600PE",
 
     # HDFCBANK Options
-    "HDFCBANK27JAN26995CE", "HDFCBANK27JAN26995PE", "HDFCBANK27JAN26990CE", "HDFCBANK27JAN26990PE",
-    "HDFCBANK27JAN26985CE", "HDFCBANK27JAN26985PE", "HDFCBANK27JAN26980CE", "HDFCBANK27JAN26980PE",
-    "HDFCBANK27JAN26975CE", "HDFCBANK27JAN26975PE", "HDFCBANK27JAN26970CE", "HDFCBANK27JAN26970PE",
-    "HDFCBANK27JAN261000CE", "HDFCBANK27JAN261000PE", "HDFCBANK27JAN261005CE", "HDFCBANK27JAN261005PE",
-    "HDFCBANK27JAN261010CE", "HDFCBANK27JAN261010PE", "HDFCBANK27JAN261015CE", "HDFCBANK27JAN261015PE",
-    "HDFCBANK27JAN261020CE", "HDFCBANK27JAN261020PE",
+    "HDFCBANK27JAN261000CE", "HDFCBANK27JAN261000PE", "HDFCBANK27JAN26995CE", "HDFCBANK27JAN26995PE",
+    "HDFCBANK27JAN26990CE", "HDFCBANK27JAN26990PE", "HDFCBANK27JAN261005CE", "HDFCBANK27JAN261005PE",
+    "HDFCBANK27JAN261010CE", "HDFCBANK27JAN261010PE", "HDFCBANK27JAN26985CE", "HDFCBANK27JAN26985PE",
+    "HDFCBANK27JAN261015CE", "HDFCBANK27JAN261015PE",
 
     # ICICIBANK Options
     "ICICIBANK27JAN261350CE", "ICICIBANK27JAN261350PE", "ICICIBANK27JAN261340CE", "ICICIBANK27JAN261340PE",
-    "ICICIBANK27JAN261330CE", "ICICIBANK27JAN261330PE", "ICICIBANK27JAN261320CE", "ICICIBANK27JAN261320PE",
-    "ICICIBANK27JAN261310CE", "ICICIBANK27JAN261310PE", "ICICIBANK27JAN261300CE", "ICICIBANK27JAN261300PE",
-    "ICICIBANK27JAN261360CE", "ICICIBANK27JAN261360PE", "ICICIBANK27JAN261370CE", "ICICIBANK27JAN261370PE",
-    "ICICIBANK27JAN261380CE", "ICICIBANK27JAN261380PE", "ICICIBANK27JAN261390CE", "ICICIBANK27JAN261390PE",
-    "ICICIBANK27JAN261400CE", "ICICIBANK27JAN261400PE",
+    "ICICIBANK27JAN261330CE", "ICICIBANK27JAN261330PE", "ICICIBANK27JAN261360CE", "ICICIBANK27JAN261360PE",
+    "ICICIBANK27JAN261370CE", "ICICIBANK27JAN261370PE", "ICICIBANK27JAN261320CE", "ICICIBANK27JAN261320PE",
+    "ICICIBANK27JAN261380CE", "ICICIBANK27JAN261380PE",
 
     # SBIN Options
-    "SBIN27JAN26960CE", "SBIN27JAN26960PE", "SBIN27JAN26955CE", "SBIN27JAN26955PE",
-    "SBIN27JAN26950CE", "SBIN27JAN26950PE", "SBIN27JAN26945CE", "SBIN27JAN26945PE",
-    "SBIN27JAN26940CE", "SBIN27JAN26940PE", "SBIN27JAN26935CE", "SBIN27JAN26935PE",
-    "SBIN27JAN26965CE", "SBIN27JAN26965PE", "SBIN27JAN26970CE", "SBIN27JAN26970PE",
-    "SBIN27JAN26975CE", "SBIN27JAN26975PE", "SBIN27JAN26980CE", "SBIN27JAN26980PE",
-    "SBIN27JAN26985CE", "SBIN27JAN26985PE",
+    "SBIN27JAN261000CE", "SBIN27JAN261000PE", "SBIN27JAN26995CE", "SBIN27JAN26995PE",
+    "SBIN27JAN26990CE", "SBIN27JAN26990PE", "SBIN27JAN261005CE", "SBIN27JAN261005PE",
+    "SBIN27JAN261010CE", "SBIN27JAN261010PE", "SBIN27JAN26985CE", "SBIN27JAN26985PE",
+    "SBIN27JAN261015CE", "SBIN27JAN261015PE",
     
     # Futures
     "BANKNIFTY27JAN26FUT", "HDFCBANK27JAN26FUT", "ICICIBANK27JAN26FUT", "SBIN27JAN26FUT",
@@ -171,44 +164,49 @@ async def send_whatsapp_with_attachment(filepath: str, caption: str):
         print(f"❌ [{now()}] File not found for attachment: {filepath}", flush=True)
         return False
 
+    # First, upload the file to UltraMSG's CDN
+    uploaded_url = await upload_file_to_ultramsg_cdn(filepath)
+    if not uploaded_url:
+        print(f"❌ [{now()}] Failed to upload file to UltraMSG CDN. Cannot send attachment.", flush=True)
+        return False
+
     loop = asyncio.get_running_loop()
     
+    # Now, send the document using the uploaded URL
     payload = {
         'token': ULTRAMSG_TOKEN,
         'to': ULTRAMSG_GROUP_ID,
+        'document': uploaded_url, # Use the URL from the upload
         'caption': caption,
         'filename': os.path.basename(filepath)
     }
     
-    response = None # Define response here to make it available in exception blocks
+    response = None 
     try:
-        with open(filepath, "rb") as f:
-            files = {'document': f}
-            
-            blocking_call = functools.partial(
-                requests.post,
-                ULTRAMSG_API_URL_DOCUMENT,
-                params=payload,
-                files=files,
-                timeout=30
-            )
+        # No 'files' parameter needed here, as the document is sent as a URL
+        blocking_call = functools.partial(
+            requests.post,
+            ULTRAMSG_API_URL_DOCUMENT,
+            params=payload,
+            timeout=30
+        )
 
-            response = await loop.run_in_executor(None, blocking_call)
-            response.raise_for_status()
-            
-            response_json = response.json()
-            
-            if response_json.get('error'):
-                error_msg = response_json['error']
-                print(f"❌ [{now()}] WhatsApp attachment FAILED. API Error: {error_msg}. Response: {response.text}", flush=True)
-                return False
+        response = await loop.run_in_executor(None, blocking_call)
+        response.raise_for_status()
+        
+        response_json = response.json()
+        
+        if response_json.get('error'):
+            error_msg = response_json['error']
+            print(f"❌ [{now()}] WhatsApp attachment FAILED. API Error: {error_msg}. Response: {response.text}", flush=True)
+            return False
 
-            if response_json.get('sent') == 'true' or response_json.get('sent') is True:
-                 print(f"✅ [{now()}] WhatsApp attachment sent successfully. Response: {response.text}", flush=True)
-                 return True
-            else:
-                 print(f"❌ [{now()}] WhatsApp attachment FAILED. Unknown API Response: {response.text}", flush=True)
-                 return False
+        if response_json.get('sent') == 'true' or response_json.get('sent') is True:
+             print(f"✅ [{now()}] WhatsApp attachment sent successfully. Response: {response.text}", flush=True)
+             return True
+        else:
+             print(f"❌ [{now()}] WhatsApp attachment FAILED. Unknown API Response: {response.text}", flush=True)
+             return False
 
     except requests.exceptions.RequestException as e:
         print(f"❌ [{now()}] FAILED to send WhatsApp attachment due to a network error: {e}", flush=True)
@@ -218,8 +216,61 @@ async def send_whatsapp_with_attachment(filepath: str, caption: str):
         return False
     except Exception as e:
         print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp attachment: {e}", flush=True)
-        return False
-
+        return False        
+        async def upload_file_to_ultramsg_cdn(filepath: str) -> str | None:
+            """
+            Uploads a local file to the UltraMSG CDN and returns the public URL.
+            Returns None on failure.
+            """
+            print(f"☁️ [{now()}] Attempting to upload {filepath} to UltraMSG CDN...", flush=True)
+            if not os.path.exists(filepath):
+                print(f"❌ [{now()}] Upload FAILED: File not found at {filepath}", flush=True)
+                return None
+        
+            loop = asyncio.get_running_loop()
+            
+            payload = {'token': ULTRAMSG_TOKEN}
+            
+            response = None
+            try:
+                with open(filepath, "rb") as f:
+                    files = {'file': f} # UltraMSG expects 'file' for media uploads
+                    
+                    blocking_call = functools.partial(
+                        requests.post,
+                        ULTRAMSG_API_URL_UPLOAD,
+                        params=payload,
+                        files=files,
+                        timeout=60 # Increased timeout for uploads
+                    )
+                    response = await loop.run_in_executor(None, blocking_call)
+                    response.raise_for_status()
+        
+                    response_json = response.json()
+        
+                    if response_json.get('error'):
+                        error_msg = response_json['error']
+                        print(f"❌ [{now()}] Upload FAILED. API Error: {error_msg}. Response: {response.text}", flush=True)
+                        return None
+                    
+                    uploaded_url = response_json.get('url')
+                    if uploaded_url:
+                        print(f"✅ [{now()}] File uploaded successfully. URL: {uploaded_url}", flush=True)
+                        return uploaded_url
+                    else:
+                        print(f"❌ [{now()}] Upload FAILED. No URL in response. Response: {response.text}", flush=True)
+                        return None
+        
+            except requests.exceptions.RequestException as e:
+                print(f"❌ [{now()}] Upload FAILED due to a network error: {e}", flush=True)
+                return None
+            except json.JSONDecodeError:
+                print(f"❌ [{now()}] Upload FAILED. Could not parse API response as JSON. Raw Response: {response.text if response else 'N/A'}", flush=True)
+                return None
+            except Exception as e:
+                print(f"❌ [{now()}] An unexpected error occurred during upload: {e}", flush=True)
+                return None
+        
 # ==============================================================================
 # =============================== CORE LOGIC ===================================
 # ==============================================================================
@@ -248,95 +299,29 @@ def lot_bucket(lots, symbol):
     return "IGNORE" # Should not be reached if alert thresholds are met
 
 
-def classify_market_action_advanced(symbol: str, option_oi_chg: float, option_price_chg: float,
-                                    future_price_chg: float, future_oi_chg: float) -> str:
+def get_option_action_classification(option_oi_chg: float, option_price_chg: float) -> str:
     """
-    Classifies market activity based on option OI/Price changes and
-    underlying future Price/OI changes, following user-defined logic.
+    Classifies market activity based on option OI/Price changes, using simplified logic.
     """
-    is_call, is_put = "CE" in symbol, "PE" in symbol
-
-    # Step 1: Directional biases from Future
-    future_is_up = future_price_chg > 0
-    future_is_down = future_price_chg < 0
-    
-    # Helper for option OI/Price directions
     option_oi_increased = option_oi_chg > 0
     option_oi_decreased = option_oi_chg < 0
     option_price_increased = option_price_chg > 0
     option_price_decreased = option_price_chg < 0
-    option_price_flat = option_price_chg == 0
 
-    # User's specific scenarios, ordered by priority of conditions
-    # 🟢 TRUE PE WRITING (BEST SIGNAL): PE OI ↑ AND FUTURE PRICE ↑ AND PE Option Price ↓ or Flat
-    if is_put and option_oi_increased and future_is_up and (option_price_decreased or option_price_flat):
-        return "🟢 True PE Writing (High-Confidence Bullish)"
-
-    # 🔴 TRUE CE WRITING: CE OI ↑ AND FUTURE ↓ AND CE Option Price ↓ or Flat
-    if is_call and option_oi_increased and future_is_down and (option_price_decreased or option_price_flat):
-        return "🔴 True CE Writing (High-Confidence Bearish)"
-
-    # 🚀 BREAKOUT/CE TRAP: CE OI ↑ AND FUTURE ↑ AND CE Option Price ↑
-    if is_call and option_oi_increased and future_is_up and option_price_increased:
-        return "🚀 Breakout / CE Trap (Explosive Bullish)"
-
-    # 🔻 BREAKDOWN/PUT TRAP: PE OI ↑ AND FUTURE ↓ AND PE Option Price ↑
-    if is_put and option_oi_increased and future_is_down and option_price_increased:
-        return "🔻 Breakdown / PE Trap (Explosive Bearish)"
-
-    # Now, handle the "OPTION PRICE LIES" and "FALSE WRITING" conditions,
-    # and general cases where no specific pattern matches.
-    # These are specific overrides based on future direction.
-
-    # ❌ EXAMPLE 4 — FALSE WRITING (REJECT): CE OI ↑ CE Price ↓ Future ↑
-    # In this case, CE OI increased, CE price decreased (suggesting writing), but future is bullish. Trust future.
-    if is_call and option_oi_increased and option_price_decreased and future_is_up:
-        return "❌ False CE Writing (Future Bullish, Reject Writing)"
-
-    # 🔴 EXAMPLE 2 — OPTION PRICE LIES (IGNORE IT): PE OI ↑ Future ↑ PE Price ↑
-    # In this case, PE OI increased with PE Price increased, but future is bullish. Ignore PE Price increase (often due to IV/panic).
-    if is_put and option_oi_increased and option_price_increased and future_is_up:
-        return "🔴 PE Buying (Option Price Lies - Still Bullish)"
-
-    # General OI Increase / Decrease, considering future direction for better context
-    if option_oi_increased:
-        if is_call: # CE OI increased
-            if future_is_up: # Market is bullish, but CE OI increased. Could be hedging or speculative buying.
-                return "CE OI Increased (Future Bullish)"
-            elif future_is_down: # Market is bearish, CE OI increased. Could be CE Writing.
-                return "CE Writing (Future Bearish)"
-            else: # Future flat
-                return "CE OI Increased (Future Flat)"
-        elif is_put: # PE OI increased
-            if future_is_up: # Market is bullish, PE OI increased. Could be PE Writing.
-                return "PE Writing (Future Bullish)"
-            elif future_is_down: # Market is bearish, PE OI increased. Could be hedging or speculative buying.
-                return "PE OI Increased (Future Bearish)"
-            else: # Future flat
-                return "PE OI Increased (Future Flat)"
-    elif option_oi_decreased:
-        if is_call: # CE OI decreased
-            if future_is_up: # Market is bullish, CE OI decreased. Could be CE Short Covering.
-                return "CE Short Covering (Future Bullish)"
-            elif future_is_down: # Market is bearish, CE OI decreased. Could be CE Long Unwinding.
-                return "CE Long Unwinding (Future Bearish)"
-            else: # Future flat
-                return "CE OI Decreased (Future Flat)"
-        elif is_put: # PE OI decreased
-            if future_is_up: # Market is bullish, PE OI decreased. Could be PE Long Unwinding.
-                return "PE Long Unwinding (Future Bullish)"
-            elif future_is_down: # Market is bearish, PE OI decreased. Could be PE Short Covering.
-                return "PE Short Covering (Future Bearish)"
-            else: # Future flat
-                return "PE OI Decreased (Future Flat)"
+    # 1. OI ↑ + Price ↑ = BUYERS DOMINANT
+    if option_oi_increased and option_price_increased:
+        return "BUYERS DOMINANT"
+    # 2. OI ↑ + Price ↓ = WRITERS DOMINANT
+    elif option_oi_increased and option_price_decreased:
+        return "WRITERS DOMINANT"
+    # 3. OI ↓ + Price ↑ = SHORT COVERING
+    elif option_oi_decreased and option_price_increased:
+        return "SHORT COVERING"
+    # 4. OI ↓ + Price ↓ = LONG UNWINDING
+    elif option_oi_decreased and option_price_decreased:
+        return "LONG UNWINDING"
     
-    # Fallback if no specific condition met or no significant OI change for option
-    if future_is_up:
-        return "Neutral (Future Uptrend)"
-    elif future_is_down:
-        return "Neutral (Future Downtrend)"
-    
-    return "Indecisive Option Movement"
+    return "Indecisive Option Movement" # Fallback if no specific condition met
 
 
 def get_option_moneyness(symbol, future_prices):
@@ -377,48 +362,32 @@ def get_option_moneyness(symbol, future_prices):
         return "OTM"
 
 
-def format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness, future_price, future_price_chg, future_past_state, future_oi_chg, future_oi_roc):
+def format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness):
     """Formats the alert message based on the 15-second interval changes."""
     option_price_chg = live_state['price'] - past_state['price']
     option_price_dir = "↑" if option_price_chg > 0 else ("↓" if option_price_chg < 0 else "↔")
-    future_price_dir = "↑" if future_price_chg > 0 else ("↓" if future_price_chg < 0 else "↔")
     
     product_name = next((name for name in LOT_SIZES if name in symbol), "UNKNOWN")
 
-    strike_display, option_type_display = "", ""
-    is_future = "FUT" in symbol
-    if not is_future:
-        try:
-            match = re.search(r'.*?(\d+)(CE|PE)$', symbol)
-            if match:
-                strike_display = match.group(1)
-                option_type_display = match.group(2)
-        except Exception:
-            strike_display, option_type_display = "N/A", ""
-
-    if is_future:
-        second_line_content = f"{product_name} FUTURE"
-    else:
-        second_line_content = f"{product_name} STRIKE: {strike_display}{option_type_display} {moneyness}"
+match = re.search(r'\d{2}[A-Z]{3}\d{2}(\d+)(CE|PE)$', symbol)
+        if match:
+            strike_display = match.group(1)
+            option_type_display = match.group(2)
+    except Exception:
+        strike_display, option_type_display = "N/A", ""
 
     main_message = f"""
+{product_name} | OPTION
+STRIKE: {strike_display}{option_type_display} {moneyness}
 ACTION: {action}
-{second_line_content}
-SIZE: {bucket} ({lots} lots)
+LOT size:- ({lots})
 EXISTING OI: {past_state['oi']}
 OI Δ: {oi_chg}
 OI RoC: {oi_roc:.2f}%
 OPTION PRICE: {live_state['price']:.2f} {option_price_dir}
-FUTURE: {future_price:.2f} {future_price_dir}
-FUTURE EXISTING OI: {future_past_state['oi']}
-FUTURE OI Δ: {future_oi_chg}
-FUTURE OI RoC: {future_oi_roc:.2f}%
 TIME: {now()}
 """
-
-    final_price_line = f"{live_state['price']:.2f}"
-
-    return f"{main_message}\n{final_price_line}"
+    return main_message
 
 # ==============================================================================
 # ======================== INTERVAL-BASED ANALYSIS =============================
@@ -433,6 +402,7 @@ async def analyze_interval_changes(snapshot_state):
     global symbol_data_state, future_prices, daily_alerts
 
     for symbol in SYMBOLS_TO_MONITOR:
+        # We are no longer monitoring futures for alerts, only options
         if "FUT" in symbol:
             continue
 
@@ -449,12 +419,12 @@ async def analyze_interval_changes(snapshot_state):
         lots = lots_from_oi_change(symbol, oi_chg)
         alert_threshold = next((t for name, t in LOT_THRESHOLDS.items() if name in symbol), 0)
 
+        # Only proceed if lot size meets the threshold
         if alert_threshold > 0 and lots >= alert_threshold:
-            print(f"🚨 [{now()}] {symbol}: Lot size {lots} >= {alert_threshold}. Potential Alert.", flush=True)
-            
             bucket = lot_bucket(lots, symbol)
             moneyness = get_option_moneyness(symbol, future_prices)
             
+            # Only proceed if bucket is not IGNORE and option is ITM or ATM
             if bucket != "IGNORE" and moneyness in ["ITM", "ATM"]:
                 option_price_chg = live_state["price"] - past_state["price"]
                 try:
@@ -462,47 +432,27 @@ async def analyze_interval_changes(snapshot_state):
                 except ZeroDivisionError:
                     oi_roc = 0.0
 
-                underlying_name = next((name for name in LOT_SIZES if name in symbol), None)
-                future_price_chg, future_oi_chg, future_oi_roc = 0, 0, 0.0
-                future_past_state = {"oi": 0} # Default empty state
-                
-                if underlying_name:
-                    expiry_match = re.search(r'(' + re.escape(underlying_name) + r'\d{2}[A-Z]{3}\d{2})', symbol)
-                    if expiry_match:
-                        expiry_and_year = symbol[len(underlying_name):expiry_match.end(1) - len(underlying_name)]
-                        future_symbol = f"{underlying_name}{expiry_and_year}FUT"
-                        
-                        if future_symbol in symbol_data_state and future_symbol in snapshot_state:
-                            future_live_state = symbol_data_state[future_symbol]
-                            future_past_state = snapshot_state[future_symbol]
-                            if future_past_state.get("price", 0) > 0 and future_past_state.get("oi", 0) > 0:
-                                future_price_chg = future_live_state["price"] - future_past_state["price"]
-                                future_oi_chg = future_live_state["oi"] - future_past_state["oi"]
-                                try:
-                                    future_oi_roc = (future_oi_chg / future_past_state["oi"]) * 100
-                                except ZeroDivisionError:
-                                    future_oi_roc = 0.0
-                
-                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_market_action_advanced(symbol, oi_chg, option_price_chg, future_price_chg, future_oi_chg)
-                
-                current_future_price = future_prices.get(underlying_name, 0)
-                
-                product_name = underlying_name or "N/A"
-                match = re.search(r'(\d+)(CE|PE)$', symbol)
-                strike, option_type = (match.group(1), match.group(2)) if match else ("FUT", "")
+                # NEW CRITERION: Only send alert if OI RoC is > 3%
+                if oi_roc > 3.0: # Using 3.0 for float comparison
+                    print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}, OI RoC: {oi_roc:.2f}%. TRIGGERING ALERT.", flush=True)
+                    
+                    action = get_option_action_classification(oi_chg, option_price_chg)
+                    
+                    product_name = next((name for name in LOT_SIZES if name in symbol), "N/A")
+                    match = re.search(r'(\d+)(CE|PE)$', symbol)
+                    strike, option_type = (match.group(1), match.group(2)) if match else ("N/A", "")
 
-                alert_data = {
-                    "time": now(), "symbol": product_name, "strike": strike,
-                    "ce/pe": option_type, "action": action, "lot size": lots,
-                    "EXISTING OI": past_state['oi'], "OI Δ": oi_chg,
-                    "OI RoC": f"{oi_roc:.2f}%", "price": "↑" if option_price_chg > 0 else "↓" if option_price_chg < 0 else "↔",
-                    "strike price": live_state['price']
-                }
-                daily_alerts.append(alert_data)
-                
-                alert_msg = format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness, current_future_price, future_price_chg, future_past_state, future_oi_chg, future_oi_roc)
-                await send_whatsapp(alert_msg)
+                    alert_data = {
+                        "time": now(), "symbol": product_name, "strike": strike,
+                        "ce/pe": option_type, "action": action, "lot size": lots,
+                        "EXISTING OI": past_state['oi'], "OI Δ": oi_chg,
+                        "OI RoC": f"{oi_roc:.2f}%", "price": "↑" if option_price_chg > 0 else "↓" if option_price_chg < 0 else "↔",
+                        "strike price": live_state['price']
+                    }
+                    daily_alerts.append(alert_data)
+                    
+                    alert_msg = format_alert_message(symbol, action, bucket, lots, live_state, past_state, oi_chg, oi_roc, moneyness)
+                    await send_whatsapp(alert_msg)
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
