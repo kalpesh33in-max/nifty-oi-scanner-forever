@@ -96,7 +96,7 @@ LOT_SIZES = {
     "SBIN": 750,
 }
 DEFAULT_LOT_SIZE = 75 # For any other symbol
-OI_ROC_THRESHOLD = 3.0 # Temporarily lowered for IV testing
+OI_ROC_THRESHOLD = 2.0 # Temporarily lowered for IV testing
 
 # ==============================================================================
 # =============================== STATE & UTILITIES ============================
@@ -140,6 +140,8 @@ async def send_whatsapp(msg: str):
         print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}", flush=True)
     except Exception as e:
         print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}", flush=True)
+
+
 
 async def send_telegram(msg: str):
     """Sends a message to the configured Telegram chat without blocking the event loop."""
@@ -331,9 +333,10 @@ TIME: {now()}
         line6 = f"OI RoC: {oi_roc:.2f}%"
         line7 = f"PRICE: {price_dir}"
         line8 = f"TIME: {now()}"
-        line9 = f"{year} {product_name} {strike_display}{option_type_display}{state['price']:.2f}"
+        line9 = f"{year} {product_name} {strike_display}{option_type_display}"
+        line10 = f"LAST PRICE: {state['price']:.2f}"
 
-        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n{line6}\n{line7}\n{line8}\n{line9}"
+        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n{line6}\n{line7}\n{line8}\n{line9}\n{line10}"
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
@@ -397,18 +400,19 @@ async def process_data(data):
         print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
         
         lots = lots_from_oi_change(symbol, oi_chg)
-        bucket = lot_bucket(lots)
-        
-        if bucket != "IGNORE":
-            #
-            # <<< NEW: Filter for ITM/ATM options before sending alert >>>
-            #
-            moneyness = get_option_moneyness(symbol, future_prices)
-            if moneyness in ["ITM", "ATM"]:
-                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_option(oi_chg, price_chg, symbol)
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness)
-                await send_alert(alert_msg)
+        if lots > 50:
+            bucket = lot_bucket(lots)
+            
+            if bucket != "IGNORE":
+                #
+                # <<< NEW: Filter for ITM/ATM options before sending alert >>>
+                #
+                moneyness = get_option_moneyness(symbol, future_prices)
+                if moneyness in ["ITM", "ATM"]:
+                    print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                    action = classify_option(oi_chg, price_chg, symbol)
+                    alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness)
+                    await send_alert(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
