@@ -245,7 +245,7 @@ def get_option_moneyness(symbol, future_prices):
         return "N/A" # If we can't parse the option, don't block it
 
     # Define ATM band (0.5% of future price)
-    atm_band = future_price * 0.005
+    atm_band = future_price * 0.001
     
     # Check ATM first
     if abs(future_price - strike_price) <= atm_band:
@@ -265,7 +265,7 @@ def get_option_moneyness(symbol, future_prices):
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness):
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices):
     """Formats the alert message, showing N/A for missing IV."""
     price_chg = state['price'] - state['price_prev']
     if price_chg > 0:
@@ -325,6 +325,7 @@ TIME: {now()}
 """
         return f"{main_message}\n\n{added_section}"
     else:
+        future_price = future_prices.get(product_name, 0)
         line1 = f"{product_name} | OPTIONSTRIKE: {strike_display}{option_type_display} {moneyness}"
         line2 = f"ACTION: {action}"
         line3 = f"SIZE: {bucket} ({lots} lots)"
@@ -334,9 +335,10 @@ TIME: {now()}
         line7 = f"PRICE: {price_dir}"
         line8 = f"TIME: {now()}"
         line9 = f"{year} {product_name} {strike_display}{option_type_display}"
-        line10 = f"LAST PRICE: {state['price']:.2f}"
+        line10 = f"FUTURE PRICE: {future_price:.2f}"
+        line11 = f"LAST PRICE: {state['price']:.2f}"
 
-        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n{line6}\n{line7}\n{line8}\n{line9}\n{line10}"
+        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n{line6}\n{line7}\n{line8}\n{line9}\n{line10}\n{line11}"
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
@@ -411,7 +413,7 @@ async def process_data(data):
                 if moneyness in ["ITM", "ATM"]:
                     print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
                     action = classify_option(oi_chg, price_chg, symbol)
-                    alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness)
+                    alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices)
                     await send_alert(alert_msg)
 
 async def run_scanner():
