@@ -17,9 +17,6 @@ from zoneinfo import ZoneInfo
 # --- Environment Variable Loading ---
 # Load credentials securely from environment variables
 API_KEY = os.environ.get("API_KEY")
-ULTRAMSG_INSTANCE = os.environ.get("ULTRAMSG_INSTANCE")
-ULTRAMSG_TOKEN = os.environ.get("ULTRAMSG_TOKEN")
-ULTRAMSG_GROUP_ID = os.environ.get("ULTRAMSG_GROUP_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
@@ -27,9 +24,6 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 # Ensure all required environment variables are set
 required_vars = {
     "API_KEY": API_KEY,
-    "ULTRAMSG_INSTANCE": ULTRAMSG_INSTANCE,
-    "ULTRAMSG_TOKEN": ULTRAMSG_TOKEN,
-    "ULTRAMSG_GROUP_ID": ULTRAMSG_GROUP_ID,
     "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
     "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
 }
@@ -44,8 +38,6 @@ if missing_vars:
 # --- API and Connection ---
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 
-# --- WhatsApp Alerting (UltraMSG) ---
-ULTRAMSG_API_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
 # --- Symbol List (Options & Futures) ---
@@ -139,28 +131,6 @@ future_prices = {
 def now():
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
 
-async def send_whatsapp(msg: str):
-    """Sends a message to the configured UltraMSG group without blocking the event loop."""
-    print(f"📦 [{now()}] Preparing to send WhatsApp message...", flush=True)
-    loop = asyncio.get_running_loop()
-    
-    params = {'token': ULTRAMSG_TOKEN, 'to': ULTRAMSG_GROUP_ID, 'body': msg, 'priority': 10}
-    
-    # Use functools.partial to prepare the blocking function with its arguments
-    blocking_call = functools.partial(requests.post, ULTRAMSG_API_URL, params=params, timeout=10)
-
-    try:
-        # Run the blocking call in a separate thread
-        response = await loop.run_in_executor(None, blocking_call)
-        response.raise_for_status() 
-        print(f"✅ [{now()}] WhatsApp message sent successfully. Response: {response.text}", flush=True)
-    except requests.exceptions.RequestException as e:
-        print(f"❌ [{now()}] FAILED to send WhatsApp message: {e}", flush=True)
-    except Exception as e:
-        print(f"❌ [{now()}] An unexpected error occurred while sending WhatsApp message: {e}", flush=True)
-
-
-
 async def send_telegram(msg: str):
     """Sends a message to the configured Telegram chat without blocking the event loop."""
     print(f"📦 [{now()}] Preparing to send Telegram message...", flush=True)
@@ -182,11 +152,8 @@ async def send_telegram(msg: str):
         print(f"❌ [{now()}] An unexpected error occurred while sending Telegram message: {e}", flush=True)
 
 async def send_alert(msg: str):
-    """Dispatches the alert to all configured channels concurrently."""
-    await asyncio.gather(
-        send_whatsapp(msg),
-        send_telegram(msg)
-    )
+    """Dispatches the alert to the configured Telegram channel."""
+    await send_telegram(msg)
 
 # ==============================================================================
 # =============================== CORE LOGIC ===================================
@@ -214,19 +181,19 @@ def lot_bucket(lots):
 def classify_option(oi_change, price_change, symbol):
     if price_change == 0:
         if oi_change > 0:
-            return "WRITING / HEDGING"
+            return "HEDGING"
         elif oi_change < 0:
-            return "POSITION UNWINDING / PROFIT BOOKING"
+            return "REMOVE FROM HEDGE"
     elif oi_change > 0:
         if price_change > 0:
-            return "BUYERS DOMINANT (LONG BUILD-UP)"
+            return "BUYER(LONG)"
         else:  # price_change < 0
-            return "WRITERS DOMINANT (SHORT / PUT WRITING)"
+            return "WRITER(SHORT)"
     elif oi_change < 0:
         if price_change > 0:
-            return "SHORT COVERING"
+            return "REMOVE FROM SHORT"
         else:  # price_change < 0
-            return "LONG UNWINDING"
+            return "REMOVE FROM LONG"
     
     return "Indecisive Movement"
 
@@ -246,7 +213,7 @@ def get_option_moneyness(symbol, future_prices):
     elif "SBIN" in symbol: underlying = "SBIN"
     elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
 
-    if not underlying:
+    if not underlying: 
         return "N/A" # If it's not one of our known underlyings, don't block it
 
     future_price = future_prices.get(underlying)
