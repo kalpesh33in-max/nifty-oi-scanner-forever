@@ -1,265 +1,463 @@
-import requests
+import asyncio
+import websockets
+import json
 import time
+import requests
 from datetime import datetime
-from zoneinfo import ZoneInfo # Requires Python 3.9+
+import re
+import functools
+import os
+import sys
+from zoneinfo import ZoneInfo
 
-# --- Configuration ---
-# !!! IMPORTANT: Replace 'YOUR_BOT_TOKEN_HERE' with your actual Telegram Bot Token !!!
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE" 
-SOURCE_CHAT_ID = "-1003665271298" # This is the channel ID you provided
+# ==============================================================================
+# ============================== CONFIGURATION =================================
+# ==============================================================================
 
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+# --- Environment Variable Loading ---
+# Load credentials securely from environment variables
+API_KEY = os.environ.get("API_KEY")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-def send_telegram_message(chat_id: str, message: str):
-    """Sends a message to the specified Telegram chat."""
-    params = {
-        'chat_id': chat_id,
-        'text': message,
-        'parse_mode': 'HTML' # Use HTML as it's typically more flexible for plain text than Markdown in some contexts
-    }
-    try:
-        response = requests.post(TELEGRAM_API_URL, params=params, timeout=10)
-        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
-        print(f"✅ Message sent to chat {chat_id} successfully.", flush=True)
-        return True
-    except requests.exceptions.RequestException as e:
-        print(f"❌ FAILED to send Telegram message to {chat_id}: {e}", flush=True)
-        return False
-    except Exception as e:
-        print(f"❌ An unexpected error occurred while sending Telegram message: {e}", flush=True)
-        return False
+# --- Validation ---
+# Ensure all required environment variables are set
+required_vars = {
+    "API_KEY": API_KEY,
+    "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
+    "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
+}
 
-def now_time_str():
-    """Returns current time in HH:MM:SS format for consistent alerts."""
-    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
+missing_vars = [key for key, value in required_vars.items() if value is None]
 
-# --- Sample Alert Messages (Mimicking gfdl_scanner.py output) ---
-# These messages are designed to pass the OI_ROC_THRESHOLD and lots > 50 checks
-# and simulate various actions for different symbols.
-SAMPLE_ALERTS = [
-    # BANKNIFTY Alerts
-    f"""BANKNIFTY | OPTION
-STRIKE: 60100CE ITM
-ACTION: BUYER(LONG)
-SIZE: HIGH (120 lots)
-EXISTING OI: 250000
-OI Δ: 6000
-OI RoC: 2.40%
-PRICE: ↑
-TIME: {now_time_str()}
-26 BANKNIFTY 60100CE
-FUTURE PRICE: 60050.50
-LAST PRICE: 180.20""",
+if missing_vars:
+    print(f"❌ Critical Error: Missing required environment variables: {', '.join(missing_vars)}", flush=True)
+    print("Please set these variables in your deployment environment and restart the application.", flush=True)
+    sys.exit(1) # Exit the script with a non-zero status code to indicate failure
 
-    f"""BANKNIFTY | OPTION
-STRIKE: 59900PE ATM
-ACTION: WRITER(SHORT)
-SIZE: MEDIUM (85 lots)
-EXISTING OI: 300000
-OI Δ: -4250
-OI RoC: -1.42%  <-- This OI RoC is less than 2.0. Will update
-PRICE: ↓
-TIME: {now_time_str()}
-26 BANKNIFTY 59900PE
-FUTURE PRICE: 60030.00
-LAST PRICE: 120.70""",
-    
-    f"""BANKNIFTY | OPTION
-STRIKE: 59700CE ITM
-ACTION: HEDGING
-SIZE: LOW (60 lots)
-EXISTING OI: 180000
-OI Δ: 3000
-OI RoC: 1.67% <-- This OI RoC is less than 2.0. Will update
-PRICE: ↔
-TIME: {now_time_str()}
-26 BANKNIFTY 59700CE
-FUTURE PRICE: 60010.00
-LAST PRICE: 210.00""",
+# --- API and Connection ---
+WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 
-    # SBIN Alerts
-    f"""SBIN | OPTION
-STRIKE: 1040PE ITM
-ACTION: BUYER(LONG)
-SIZE: HIGH (100 lots)
-EXISTING OI: 120000
-OI Δ: 7500
-OI RoC: 6.25%
-PRICE: ↑
-TIME: {now_time_str()}
-26 SBIN 1040PE
-FUTURE PRICE: 1035.50
-LAST PRICE: 25.00""",
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-    f"""SBIN | OPTION
-STRIKE: 1030CE OTM
-ACTION: REMOVE FROM SHORT
-SIZE: MEDIUM (75 lots)
-EXISTING OI: 90000
-OI Δ: -5625
-OI RoC: -6.25%
-PRICE: ↑
-TIME: {now_time_str()}
-26 SBIN 1030CE
-FUTURE PRICE: 1035.50
-LAST PRICE: 18.00""", # Note: This will be filtered out by get_option_moneyness if SBIN is OTM
+# --- Symbol List (Options & Futures) ---
+SYMBOLS_TO_MONITOR = [
+    # BANKNIFTY Options
+    "BANKNIFTY27JAN2660100CE", "BANKNIFTY27JAN2660100PE",
+    "BANKNIFTY27JAN2660000CE", "BANKNIFTY27JAN2660000PE",
+    "BANKNIFTY27JAN2659900CE", "BANKNIFTY27JAN2659900PE",
+    "BANKNIFTY27JAN2659800CE", "BANKNIFTY27JAN2659800PE",
+    "BANKNIFTY27JAN2659700CE", "BANKNIFTY27JAN2659700PE",
+    "BANKNIFTY27JAN2659600CE", "BANKNIFTY27JAN2659600PE",
+    "BANKNIFTY27JAN2660200CE", "BANKNIFTY27JAN2660200PE",
+    "BANKNIFTY27JAN2660300CE", "BANKNIFTY27JAN2660300PE",
+    "BANKNIFTY27JAN2660400CE", "BANKNIFTY27JAN2660400PE",
+    "BANKNIFTY27JAN2660500CE", "BANKNIFTY27JAN2660500PE",
+    "BANKNIFTY27JAN2660600CE", "BANKNIFTY27JAN2660600PE",
 
-    # ICICIBANK Alerts
-    f"""ICICIBANK | OPTION
-STRIKE: 1410CE ATM
-ACTION: WRITER(SHORT)
-SIZE: HIGH (150 lots)
-EXISTING OI: 100000
-OI Δ: -10500
-OI RoC: -10.50%
-PRICE: ↓
-TIME: {now_time_str()}
-26 ICICIBANK 1410CE
-FUTURE PRICE: 1412.00
-LAST PRICE: 30.50""",
-    
-    f"""ICICIBANK | OPTION
-STRIKE: 1390PE ITM
-ACTION: HEDGING
-SIZE: LOW (60 lots)
-EXISTING OI: 80000
-OI Δ: 4200
-OI RoC: 5.25%
-PRICE: ↔
-TIME: {now_time_str()}
-26 ICICIBANK 1390PE
-FUTURE PRICE: 1412.00
-LAST PRICE: 15.00""",
+    # SBIN Options
+    "SBIN27JAN261040CE", "SBIN27JAN261040PE",
+    "SBIN27JAN261035CE", "SBIN27JAN261035PE",
+    "SBIN27JAN261030CE", "SBIN27JAN261030PE",
+    "SBIN27JAN261025CE", "SBIN27JAN261025PE",
+    "SBIN27JAN261020CE", "SBIN27JAN261020PE",
+    "SBIN27JAN261015CE", "SBIN27JAN261015PE",
+    "SBIN27JAN261045CE", "SBIN27JAN261045PE",
+    "SBIN27JAN261050CE", "SBIN27JAN261050PE",
+    "SBIN27JAN261055CE", "SBIN27JAN261055PE",
+    "SBIN27JAN261060CE", "SBIN27JAN261060PE",
+    "SBIN27JAN261065CE", "SBIN27JAN261065PE",
 
-    # HDFCBANK Alerts
-    f"""HDFCBANK | OPTION
-STRIKE: 930CE ATM
-ACTION: BUYER(LONG)
-SIZE: HIGH (110 lots)
-EXISTING OI: 110000
-OI Δ: 6050
-OI RoC: 5.50%
-PRICE: ↑
-TIME: {now_time_str()}
-26 HDFCBANK 930CE
-FUTURE PRICE: 928.00
-LAST PRICE: 12.00""",
+    # ICICIBANK Options
+    "ICICIBANK27JAN261410CE", "ICICIBANK27JAN261410PE",
+    "ICICIBANK27JAN261400CE", "ICICIBANK27JAN261400PE",
+    "ICICIBANK27JAN261390CE", "ICICIBANK27JAN261390PE",
+    "ICICIBANK27JAN261380CE", "ICICIBANK27JAN261380PE",
+    "ICICIBANK27JAN261370CE", "ICICIBANK27JAN261370PE",
+    "ICICIBANK27JAN261360CE", "ICICIBANK27JAN261360PE",
+    "ICICIBANK27JAN261420CE", "ICICIBANK27JAN261420PE",
+    "ICICIBANK27JAN261430CE", "ICICIBANK27JAN261430PE",
+    "ICICIBANK27JAN261440CE", "ICICIBANK27JAN261440PE",
+    "ICICIBANK27JAN261450CE", "ICICIBANK27JAN261450PE",
+    "ICICIBANK27JAN261460CE", "ICICIBANK27JAN261460PE",
 
-    f"""HDFCBANK | OPTION
-STRIKE: 920PE ITM
-ACTION: REMOVE FROM LONG
-SIZE: MEDIUM (80 lots)
-EXISTING OI: 95000
-OI Δ: -4400
-OI RoC: -4.63%
-PRICE: ↓
-TIME: {now_time_str()}
-26 HDFCBANK 920PE
-FUTURE PRICE: 928.00
-LAST PRICE: 8.50""",
+    # HDFCBANK Options
+    "HDFCBANK27JAN26930CE", "HDFCBANK27JAN26930PE",
+    "HDFCBANK27JAN26925CE", "HDFCBANK27JAN26925PE",
+    "HDFCBANK27JAN26920CE", "HDFCBANK27JAN26920PE",
+    "HDFCBANK27JAN26915CE", "HDFCBANK27JAN26915PE",
+    "HDFCBANK27JAN26910CE", "HDFCBANK27JAN26910PE",
+    "HDFCBANK27JAN26905CE", "HDFCBANK27JAN26905PE",
+    "HDFCBANK27JAN26935CE", "HDFCBANK27JAN26935PE",
+    "HDFCBANK27JAN26940CE", "HDFCBANK27JAN26940PE",
+    "HDFCBANK27JAN26945CE", "HDFCBANK27JAN26945PE",
+    "HDFCBANK27JAN26950CE", "HDFCBANK27JAN26950PE",
+    "HDFCBANK27JAN26955CE", "HDFCBANK27JAN26955PE",
 
-    # Another round with some variations
-    f"""BANKNIFTY | OPTION
-STRIKE: 60300PE ITM
-ACTION: BUYER(LONG)
-SIZE: EXTRA HIGH (160 lots)
-EXISTING OI: 280000
-OI Δ: 9600
-OI RoC: 3.43%
-PRICE: ↑
-TIME: {now_time_str()}
-26 BANKNIFTY 60300PE
-FUTURE PRICE: 60280.00
-LAST PRICE: 200.00""",
-
-    f"""SBIN | OPTION
-STRIKE: 1050CE ATM
-ACTION: WRITER(SHORT)
-SIZE: MEDIUM (90 lots)
-EXISTING OI: 100000
-OI Δ: -6750
-OI RoC: -6.75%
-PRICE: ↓
-TIME: {now_time_str()}
-26 SBIN 1050CE
-FUTURE PRICE: 1048.00
-LAST PRICE: 20.00""",
-
-    f"""ICICIBANK | OPTION
-STRIKE: 1420CE ITM
-ACTION: REMOVE FROM HEDGE
-SIZE: HIGH (120 lots)
-EXISTING OI: 90000
-OI Δ: -8400
-OI RoC: -9.33%
-PRICE: ↑
-TIME: {now_time_str()}
-26 ICICIBANK 1420CE
-FUTURE PRICE: 1415.00
-LAST PRICE: 40.00""",
-
-    f"""HDFCBANK | OPTION
-STRIKE: 910CE OTM
-ACTION: HEDGING
-SIZE: LOW (55 lots)
-EXISTING OI: 70000
-OI Δ: 3025
-OI RoC: 4.32%
-PRICE: ↔
-TIME: {now_time_str()}
-26 HDFCBANK 910CE
-FUTURE PRICE: 925.00
-LAST PRICE: 10.00""", # Note: This will be filtered out by get_option_moneyness if HDFCBANK is OTM
-
-    f"""BANKNIFTY | OPTION
-STRIKE: 60000CE ATM
-ACTION: WRITER(SHORT)
-SIZE: MEDIUM (70 lots)
-EXISTING OI: 290000
-OI Δ: -3500
-OI RoC: -1.21% <-- This will be filtered by OI_ROC
-PRICE: ↓
-TIME: {now_time_str()}
-26 BANKNIFTY 60000CE
-FUTURE PRICE: 60000.00
-LAST PRICE: 155.00""",
-
-    f"""SBIN | OPTION
-STRIKE: 1060PE ITM
-ACTION: HEDGING
-SIZE: EXTREME HIGH (210 lots)
-EXISTING OI: 150000
-OI Δ: 15750
-OI RoC: 10.50%
-PRICE: ↔
-TIME: {now_time_str()}
-26 SBIN 1060PE
-FUTURE PRICE: 1055.00
-LAST PRICE: 30.00""",
+    # Futures
+    "BANKNIFTY27JAN26FUT", "HDFCBANK27JAN26FUT", "ICICIBANK27JAN26FUT", "SBIN27JAN26FUT",
 ]
 
-# Filtering out messages that would not pass gfdl_scanner's alert conditions based on OI RoC.
-# I manually checked this during generation.
-# For simplicity in this dummy script, I'm just sending them all, but the aggregator bot
-# should ignore the ones with insufficient OI_ROC or if OTM based on its parsing.
+# --- Logic & Thresholds ---
+LOT_SIZES = {
+    "BANKNIFTY": 30,
+    "HDFCBANK": 550,
+    "ICICIBANK": 700,
+    "SBIN": 750,
+}
+DEFAULT_LOT_SIZE = 75 # For any other symbol
+OI_ROC_THRESHOLD = 2.0 # Temporarily lowered for IV testing
+
+# ==============================================================================
+# =============================== STATE & UTILITIES ============================
+# ==============================================================================
+
+# State now supports None for IV to track missing data
+symbol_data_state = {
+    symbol: {
+        "price": 0, "price_prev": 0,
+        "oi": 0, "oi_prev": 0,
+    } for symbol in SYMBOLS_TO_MONITOR
+}
+
+# Dictionary to hold the latest price of the underlying futures
+future_prices = {
+    "BANKNIFTY": 0,
+    "HDFCBANK": 0,
+    "ICICIBANK": 0,
+    "SBIN": 0,
+}
+
+def now():
+    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
+
+async def send_telegram(msg: str):
+    """Sends a message to the configured Telegram chat without blocking the event loop."""
+    print(f"📦 [{now()}] Preparing to send Telegram message...", flush=True)
+    loop = asyncio.get_running_loop()
+    
+    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
+    
+    # Use functools.partial to prepare the blocking function with its arguments
+    blocking_call = functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10)
+
+    try:
+        # Run the blocking call in a separate thread
+        response = await loop.run_in_executor(None, blocking_call)
+        response.raise_for_status() 
+        print(f"✅ [{now()}] Telegram message sent successfully. Response: {response.text}", flush=True)
+    except requests.exceptions.RequestException as e:
+        print(f"❌ [{now()}] FAILED to send Telegram message: {e}", flush=True)
+    except Exception as e:
+        print(f"❌ [{now()}] An unexpected error occurred while sending Telegram message: {e}", flush=True)
+
+async def send_alert(msg: str):
+    """Dispatches the alert to the configured Telegram channel."""
+    await send_telegram(msg)
+
+# ==============================================================================
+# =============================== CORE LOGIC ===================================
+# ==============================================================================
+
+def lots_from_oi_change(symbol, oi_change):
+    """Calculates the number of lots from a change in Open Interest."""
+    lot_size = DEFAULT_LOT_SIZE
+    for name, size in LOT_SIZES.items():
+        if name in symbol:
+            lot_size = size
+            break
+    if lot_size == 0: return 0
+    return int(abs(oi_change) / lot_size)
+
+def lot_bucket(lots):
+    """Classifies the number of lots into qualitative buckets."""
+    if lots >= 200: return "EXTREME HIGH"
+    if lots >= 150: return "EXTRA HIGH"
+    if lots >= 100: return "HIGH"
+    if lots >= 75: return "MEDIUM"
+    if lots >= 1: return "LOW"
+    return "IGNORE"
+
+def classify_option(oi_change, price_change, symbol):
+    if price_change == 0:
+        if oi_change > 0:
+            return "HEDGING"
+        elif oi_change < 0:
+            return "REMOVE FROM HEDGE"
+    elif oi_change > 0:
+        if price_change > 0:
+            return "BUYER(LONG)"
+        else:  # price_change < 0
+            return "WRITER(SHORT)"
+    elif oi_change < 0:
+        if price_change > 0:
+            return "REMOVE FROM SHORT"
+        else:  # price_change < 0
+            return "REMOVE FROM LONG"
+    
+    return "Indecisive Movement"
+
+def get_option_moneyness(symbol, future_prices):
+    """
+    Checks if an option is ITM, ATM, or OTM based on the latest future price.
+    Returns a string: "ITM", "ATM", or "OTM".
+    """
+    # This filter does not apply to future contracts themselves
+    if "FUT" in symbol:
+        return "N/A"
+
+    # Identify underlying and get its future price
+    underlying = None
+    if "HDFCBANK" in symbol: underlying = "HDFCBANK"
+    elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
+    elif "SBIN" in symbol: underlying = "SBIN"
+    elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
+
+    if not underlying: 
+        return "N/A" # If it's not one of our known underlyings, don't block it
+
+    future_price = future_prices.get(underlying)
+    if not future_price or future_price == 0:
+        print(f"⏳ [{now()}] {symbol}: Waiting for future price of {underlying} to check moneyness.", flush=True)
+        return "OTM" # Treat as OTM if we don't have the future price yet
+
+    # Extract strike and type
+    try:
+        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
+        strike_price = int(match.group(2))
+        option_type = match.group(3)
+    except (AttributeError, TypeError, ValueError):
+        return "N/A" # If we can't parse the option, don't block it
+
+    # Define ATM band (0.5% of future price)
+    atm_band = future_price * 0.001
+    
+    # Check ATM first
+    if abs(future_price - strike_price) <= atm_band:
+        return "ATM"
+    
+    # Check ITM
+    is_itm = False
+    if option_type == 'CE' and strike_price < future_price:
+        is_itm = True
+    if option_type == 'PE' and strike_price > future_price:
+        is_itm = True
+
+    if is_itm:
+        return "ITM"
+    else:
+        # If not ATM and not ITM, it must be OTM
+        print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
+        return "OTM"
+
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices):
+    """Formats the alert message, showing N/A for missing IV."""
+    price_chg = state['price'] - state['price_prev']
+    if price_chg > 0:
+        price_dir = "↑"
+    elif price_chg < 0:
+        price_dir = "↓"
+    else:
+        price_dir = "↔"
+
+    # Dynamically determine product name
+    product_name = "UNKNOWN" # Default
+    if "HDFCBANK" in symbol:
+        product_name = "HDFCBANK"
+    elif "ICICIBANK" in symbol:
+        product_name = "ICICI" # As requested by user
+    elif "SBIN" in symbol:
+        product_name = "SBIN"
+    elif "BANKNIFTY" in symbol:
+        product_name = "BANKNIFTY"
+
+    year, strike_display, option_type_display = "", "", ""
+    is_future = "FUT" in symbol # Determine if it's a future
+
+    try:
+        if is_future:
+            match = re.search(r'.*?(\d{2})FUT$', symbol)
+            if match:
+                year = match.group(1)
+            strike_display = "FUT" # For internal logic, but won't be displayed in main_message
+            option_type_display = ""
+        else: # For options
+            match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
+            if match:
+                year = match.group(1)
+                strike_display = match.group(2)
+                option_type_display = match.group(3)
+            else: # Fallback for old format without date
+                match = re.search(r'(\d+)(CE|PE)$', symbol)
+                strike_display = match.group(1)
+                option_type_display = match.group(2)
+    except Exception:
+        year, strike_display, option_type_display = "", "N/A", "" # Fallback if parsing completely fails
+
+    if is_future:
+        main_message = f"""{product_name} | FUTURE
+ACTION: {action}
+SIZE: {bucket} ({lots} lots)
+EXISTING OI: {state['oi_prev']}
+OI Δ: {oi_chg}
+OI RoC: {oi_roc:.2f}%
+PRICE: {price_dir}
+TIME: {now()}
+"""
+        added_section = f"""{year} {product_name} FUT
+
+{state['price']:.2f}
+"""
+        return f"{main_message}\n\n{added_section}"
+    else:
+        # Ensure correct underlying key for future_prices lookup
+        underlying_lookup_key = product_name
+        if product_name == "ICICI":
+            underlying_lookup_key = "ICICIBANK"
+        future_price = future_prices.get(underlying_lookup_key, 0)
+        line1 = f"{product_name} | OPTION"
+        line2 = f"STRIKE: {strike_display}{option_type_display} {moneyness}"
+        line3 = f"ACTION: {action}"
+        line4 = f"SIZE: {bucket} ({lots} lots)"
+        line5 = f"EXISTING OI: {state['oi_prev']}"
+        line6 = f"OI Δ: {oi_chg}"
+        line7 = f"OI RoC: {oi_roc:.2f}%"
+        line8 = f"PRICE: {price_dir}"
+        line9 = f"TIME: {now()}"
+        line10 = f"{year} {product_name} {strike_display}{option_type_display}"
+        line11 = f"FUTURE PRICE: {future_price:.2f}"
+        line12 = f"LAST PRICE: {state['price']:.2f}"
+
+        return f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}\n{line6}\n{line7}\n{line8}\n{line9}\n{line10}\n{line11}\n{line12}"
+
+# ==============================================================================
+# ============================ MAIN SCANNER & WEBSOCKET ========================
+# ==============================================================================
+
+async def process_data(data):
+    """
+    Processes a single data packet, updating future prices or sending option alerts.
+    Option alerts are filtered to only include ITM/ATM strikes.
+    """
+    global symbol_data_state, future_prices
+    
+    symbol = data.get("InstrumentIdentifier")
+    if not symbol or symbol not in symbol_data_state:
+        return
+
+    new_price = data.get("LastTradePrice")
+    if new_price is None:
+        return
+
+    # If the symbol is a future, update its price and stop processing
+    if "FUT" in symbol:
+        underlying = None
+        if "HDFCBANK" in symbol: underlying = "HDFCBANK"
+        elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
+        elif "SBIN" in symbol: underlying = "SBIN"
+        elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
+        
+        if underlying and new_price > 0: # Ensure price is valid
+            future_prices[underlying] = new_price
+        return
+
+    # --- Standard processing for Option contracts ---
+    state = symbol_data_state[symbol]
+    new_oi = data.get("OpenInterest")
+
+    if new_oi is None:
+        return
+
+    state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
+    state["price"], state["oi"] = new_price, new_oi
+
+    if state["oi_prev"] == 0:
+        print(f"ℹ️ [{now()}] {symbol}: Initializing option data state.", flush=True)
+        return
+
+    oi_chg = state["oi"] - state["oi_prev"]
+    if oi_chg == 0:
+        return
+
+    # --- Calculations ---
+    price_chg = state["price"] - state["price_prev"]
+    
+    try:
+        oi_roc = (oi_chg / state["oi_prev"]) * 100
+    except ZeroDivisionError:
+        oi_roc = 0.0
+
+    # --- Alert Logic ---
+    if abs(oi_roc) > OI_ROC_THRESHOLD:
+        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
+        
+        lots = lots_from_oi_change(symbol, oi_chg)
+        if lots > 50:
+            bucket = lot_bucket(lots)
+            
+            if bucket != "IGNORE":
+                #
+                # <<< NEW: Filter for ITM/ATM options before sending alert >>>
+                #
+                moneyness = get_option_moneyness(symbol, future_prices)
+                if moneyness in ["ITM", "ATM"]:
+                    print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                    action = classify_option(oi_chg, price_chg, symbol)
+                    alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices)
+                    await send_alert(alert_msg)
+
+async def run_scanner():
+    """The main function to connect, authenticate, subscribe, and process data."""
+    while True:
+        try:
+            async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
+                print(f"✅ [{now()}] Connected to WebSocket. Authenticating...", flush=True)
+                
+                auth_request = {"MessageType": "Authenticate", "Password": API_KEY}
+                await websocket.send(json.dumps(auth_request))
+                auth_response = json.loads(await websocket.recv())
+                
+                if not auth_response.get("Complete"):
+                    print(f"❌ [{now()}] Authentication FAILED: {auth_response.get('Comment')}. Retrying in 30s.", flush=True)
+                    await asyncio.sleep(30)
+                    continue
+                
+                print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...", flush=True)
+
+                for symbol in SYMBOLS_TO_MONITOR:
+                    await websocket.send(json.dumps({
+                        "MessageType": "SubscribeRealtime", "Exchange": "NFO",
+                        "Unsubscribe": "false", "InstrumentIdentifier": symbol
+                    }))
+                print(f"✅ [{now()}] Subscriptions sent. Scanner is now live.", flush=True)
+                await send_alert("✅ GFDL Scanner is LIVE and monitoring the market.")
+
+                async for message in websocket:
+                    try:
+                        data = json.loads(message)
+                        if data.get("MessageType") == "RealtimeResult":
+                            await process_data(data)                        
+                    except json.JSONDecodeError:
+                        print(f"⚠️ [{now()}] Warning: Received a non-JSON message.", flush=True)
+                    except Exception as e:
+                        print(f"❌ [{now()}] Error during message processing for {message}: {e}", flush=True)
+
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"⚠️ [{now()}] WebSocket connection closed: {e}. Reconnecting in 10 seconds...", flush=True)
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...", flush=True)
+            await asyncio.sleep(30)
 
 if __name__ == "__main__":
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("!!! WARNING: Please replace 'YOUR_BOT_TOKEN_HERE' with your actual bot token in dummy_alerts.py before running. !!!", flush=True)
-        exit()
-
-    print(f"🚀 Sending {len(SAMPLE_ALERTS)} dummy alert messages to channel {SOURCE_CHAT_ID}...", flush=True)
-    print("Ensure aggregator_bot.py is running and listening to this channel.", flush=True)
-    print("Waiting 3 seconds before sending the first message.", flush=True)
-    time.sleep(3) # Give a moment to read the instructions
-
-    for i, alert_message in enumerate(SAMPLE_ALERTS):
-        print(f"Sending message {i+1}/{len(SAMPLE_ALERTS)}...", flush=True)
-        success = send_telegram_message(SOURCE_CHAT_ID, alert_message)
-        if not success:
-            print("Stopping due to send error.", flush=True)
-            break
-        time.sleep(2) # Wait a bit between messages to simulate real-time and avoid rate limits
-
-    print("\n✅ Finished sending dummy alerts.", flush=True)
-    print("Check your aggregator_bot.py's target channel for the summarized report.", flush=True)
+    print("🚀 GFDL Scanner Starting...", flush=True)
+    try:
+        asyncio.run(run_scanner())
+    except KeyboardInterrupt:
+        print("\n🛑 Scanner stopped by user.", flush=True)
+        # In a real async app, you'd await this, but for shutdown it's okay to fire and forget
+        asyncio.run(send_alert("🛑 GFDL Scanner was stopped manually."))
+    except Exception as e:
+        error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
+        print(error_message, flush=True)
+        asyncio.run(send_alert(error_message))
