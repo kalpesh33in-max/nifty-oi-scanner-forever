@@ -392,19 +392,28 @@ async def process_data(data):
         print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
         
         lots = lots_from_oi_change(symbol, oi_chg)
-        if lots > 100:
-            bucket = lot_bucket(lots)
-            
-            if bucket != "IGNORE":
-                #
-                # <<< NEW: Filter for ITM/ATM options before sending alert >>>
-                #
+        is_future = "FUT" in symbol
+        
+        # <<< NEW: Differentiated alert logic for Futures vs Options >>>
+        alert_condition_met = False
+        moneyness = "N/A" # Default for futures
+
+        if is_future:
+            if lots > 50:
+                alert_condition_met = True
+        else: # It's an option
+            if lots > 100:
                 moneyness = get_option_moneyness(symbol, future_prices)
                 if moneyness in ["ITM", "ATM"]:
-                    print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                    action = classify_option(oi_chg, price_chg, symbol)
-                    alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices)
-                    await send_alert(alert_msg)
+                    alert_condition_met = True
+        
+        if alert_condition_met:
+            bucket = lot_bucket(lots)
+            if bucket != "IGNORE":
+                print(f"📊 [{now()}] {symbol}: {'Future' if is_future else moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                action = classify_option(oi_chg, price_chg, symbol)
+                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices)
+                await send_alert(alert_msg)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
