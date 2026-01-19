@@ -392,7 +392,7 @@ async def process_data(data):
         print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
         
         lots = lots_from_oi_change(symbol, oi_chg)
-        if lots > 50:
+        if lots > 100:
             bucket = lot_bucket(lots)
             
             if bucket != "IGNORE":
