@@ -42,60 +42,98 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
-    # BANKNIFTY Options
-    "BANKNIFTY27JAN2660100CE", "BANKNIFTY27JAN2660100PE",
-    "BANKNIFTY27JAN2660000CE", "BANKNIFTY27JAN2660000PE",
-    "BANKNIFTY27JAN2659900CE", "BANKNIFTY27JAN2659900PE",
-    "BANKNIFTY27JAN2659800CE", "BANKNIFTY27JAN2659800PE",
-    "BANKNIFTY27JAN2659700CE", "BANKNIFTY27JAN2659700PE",
-    "BANKNIFTY27JAN2659600CE", "BANKNIFTY27JAN2659600PE",
-    "BANKNIFTY27JAN2660200CE", "BANKNIFTY27JAN2660200PE",
-    "BANKNIFTY27JAN2660300CE", "BANKNIFTY27JAN2660300PE",
-    "BANKNIFTY27JAN2660400CE", "BANKNIFTY27JAN2660400PE",
-    "BANKNIFTY27JAN2660500CE", "BANKNIFTY27JAN2660500PE",
-    "BANKNIFTY27JAN2660600CE", "BANKNIFTY27JAN2660600PE",
-
-    # SBIN Options
-    "SBIN27JAN261040CE", "SBIN27JAN261040PE",
-    "SBIN27JAN261035CE", "SBIN27JAN261035PE",
-    "SBIN27JAN261030CE", "SBIN27JAN261030PE",
-    "SBIN27JAN261025CE", "SBIN27JAN261025PE",
-    "SBIN27JAN261020CE", "SBIN27JAN261020PE",
-    "SBIN27JAN261015CE", "SBIN27JAN261015PE",
-    "SBIN27JAN261045CE", "SBIN27JAN261045PE",
-    "SBIN27JAN261050CE", "SBIN27JAN261050PE",
-    "SBIN27JAN261055CE", "SBIN27JAN261055PE",
-    "SBIN27JAN261060CE", "SBIN27JAN261060PE",
-    "SBIN27JAN261065CE", "SBIN27JAN261065PE",
-
-    # ICICIBANK Options
-    "ICICIBANK27JAN261410CE", "ICICIBANK27JAN261410PE",
-    "ICICIBANK27JAN261400CE", "ICICIBANK27JAN261400PE",
-    "ICICIBANK27JAN261390CE", "ICICIBANK27JAN261390PE",
-    "ICICIBANK27JAN261380CE", "ICICIBANK27JAN261380PE",
-    "ICICIBANK27JAN261370CE", "ICICIBANK27JAN261370PE",
-    "ICICIBANK27JAN261360CE", "ICICIBANK27JAN261360PE",
-    "ICICIBANK27JAN261420CE", "ICICIBANK27JAN261420PE",
-    "ICICIBANK27JAN261430CE", "ICICIBANK27JAN261430PE",
-    "ICICIBANK27JAN261440CE", "ICICIBANK27JAN261440PE",
-    "ICICIBANK27JAN261450CE", "ICICIBANK27JAN261450PE",
-    "ICICIBANK27JAN261460CE", "ICICIBANK27JAN261460PE",
-
-    # HDFCBANK Options
-    "HDFCBANK27JAN26930CE", "HDFCBANK27JAN26930PE",
-    "HDFCBANK27JAN26925CE", "HDFCBANK27JAN26925PE",
-    "HDFCBANK27JAN26920CE", "HDFCBANK27JAN26920PE",
-    "HDFCBANK27JAN26915CE", "HDFCBANK27JAN26915PE",
-    "HDFCBANK27JAN26910CE", "HDFCBANK27JAN26910PE",
-    "HDFCBANK27JAN26905CE", "HDFCBANK27JAN26905PE",
-    "HDFCBANK27JAN26935CE", "HDFCBANK27JAN26935PE",
-    "HDFCBANK27JAN26940CE", "HDFCBANK27JAN26940PE",
-    "HDFCBANK27JAN26945CE", "HDFCBANK27JAN26945PE",
-    "HDFCBANK27JAN26950CE", "HDFCBANK27JAN26950PE",
-    "HDFCBANK27JAN26955CE", "HDFCBANK27JAN26955PE",
-
-    # Futures
-    "BANKNIFTY27JAN26FUT", "HDFCBANK27JAN26FUT", "ICICIBANK27JAN26FUT", "SBIN27JAN26FUT",
+    "SBIN27JAN261040CE",
+    "SBIN27JAN261040PE",
+    "SBIN27JAN261035CE",
+    "SBIN27JAN261035PE",
+    "SBIN27JAN261030CE",
+    "SBIN27JAN261030PE",
+    "SBIN27JAN261025CE",
+    "SBIN27JAN261025PE",
+    "SBIN27JAN261020CE",
+    "SBIN27JAN261020PE",
+    "SBIN27JAN261015CE",
+    "SBIN27JAN261015PE",
+    "SBIN27JAN261045CE",
+    "SBIN27JAN261045PE",
+    "SBIN27JAN261050CE",
+    "SBIN27JAN261050PE",
+    "SBIN27JAN261055CE",
+    "SBIN27JAN261055PE",
+    "SBIN27JAN261060CE",
+    "SBIN27JAN261060PE",
+    "SBIN27JAN261065CE",
+    "SBIN27JAN261065PE",
+    "HDFCBANK27JAN26930CE",
+    "HDFCBANK27JAN26930PE",
+    "HDFCBANK27JAN26925CE",
+    "HDFCBANK27JAN26925PE",
+    "HDFCBANK27JAN26920CE",
+    "HDFCBANK27JAN26920PE",
+    "HDFCBANK27JAN26915CE",
+    "HDFCBANK27JAN26915PE",
+    "HDFCBANK27JAN26910CE",
+    "HDFCBANK27JAN26910PE",
+    "HDFCBANK27JAN26905CE",
+    "HDFCBANK27JAN26905PE",
+    "HDFCBANK27JAN26935CE",
+    "HDFCBANK27JAN26935PE",
+    "HDFCBANK27JAN26940CE",
+    "HDFCBANK27JAN26940PE",
+    "HDFCBANK27JAN26945CE",
+    "HDFCBANK27JAN26945PE",
+    "HDFCBANK27JAN26950CE",
+    "HDFCBANK27JAN26950PE",
+    "HDFCBANK27JAN26955CE",
+    "HDFCBANK27JAN26955PE",
+    "BANKNIFTY27JAN26FUT",
+    "HDFCBANK27JAN26FUT",
+    "ICICIBANK27JAN26FUT",
+    "SBIN27JAN26FUT",
+    "BANKNIFTY27JAN2659900CE",
+    "BANKNIFTY27JAN2659900PE",
+    "BANKNIFTY27JAN2659800CE",
+    "BANKNIFTY27JAN2659800PE",
+    "BANKNIFTY27JAN2659700CE",
+    "BANKNIFTY27JAN2659700PE",
+    "BANKNIFTY27JAN2659600CE",
+    "BANKNIFTY27JAN2659600PE",
+    "BANKNIFTY27JAN2659500CE",
+    "BANKNIFTY27JAN2659500PE",
+    "BANKNIFTY27JAN2659400CE",
+    "BANKNIFTY27JAN2659400PE",
+    "BANKNIFTY27JAN2660000CE",
+    "BANKNIFTY27JAN2660000PE",
+    "BANKNIFTY27JAN2660100CE",
+    "BANKNIFTY27JAN2660100PE",
+    "BANKNIFTY27JAN2660200CE",
+    "BANKNIFTY27JAN2660200PE",
+    "BANKNIFTY27JAN2660300CE",
+    "BANKNIFTY27JAN2660300PE",
+    "BANKNIFTY27JAN2660400CE",
+    "BANKNIFTY27JAN2660400PE",
+    "ICICIBANK27JAN261380CE",
+    "ICICIBANK27JAN261380PE",
+    "ICICIBANK27JAN261370CE",
+    "ICICIBANK27JAN261370PE",
+    "ICICIBANK27JAN261360CE",
+    "ICICIBANK27JAN261360PE",
+    "ICICIBANK27JAN261350CE",
+    "ICICIBANK27JAN261350PE",
+    "ICICIBANK27JAN261340CE",
+    "ICICIBANK27JAN261340PE",
+    "ICICIBANK27JAN261330CE",
+    "ICICIBANK27JAN261330PE",
+    "ICICIBANK27JAN261390CE",
+    "ICICIBANK27JAN261390PE",
+    "ICICIBANK27JAN261400CE",
+    "ICICIBANK27JAN261400PE",
+    "ICICIBANK27JAN261410CE",
+    "ICICIBANK27JAN261410PE",
+    "ICICIBANK27JAN261420CE",
+    "ICICIBANK27JAN261420PE",
+    "ICICIBANK27JAN261430CE",
+    "ICICIBANK27JAN261430PE"
 ]
 
 # --- Logic & Thresholds ---
@@ -107,25 +145,31 @@ LOT_SIZES = {
 }
 DEFAULT_LOT_SIZE = 75 # For any other symbol
 OI_ROC_THRESHOLD = 2.0 # Temporarily lowered for IV testing
+MOMENTUM_WINDOW = 300 # 5 minutes in seconds
 
 # ==============================================================================
 # =============================== STATE & UTILITIES ============================
 # ==============================================================================
 
-# State now supports None for IV to track missing data
+# State now supports a history of ticks for momentum analysis
 symbol_data_state = {
     symbol: {
+        # State for single-tick OI RoC alerts
         "price": 0, "price_prev": 0,
         "oi": 0, "oi_prev": 0,
+        # State for 5-minute momentum alerts
+        "ticks": [],  # Stores (timestamp, price, oi) tuples
+        "last_trend_alert_type": None, # e.g., "STRONG_UPTREND"
+        "last_trend_alert_time": 0,    # time.time() of the last alert
     } for symbol in SYMBOLS_TO_MONITOR
 }
 
 # Dictionary to hold the latest price of the underlying futures
-future_prices = {
-    "BANKNIFTY": 0,
-    "HDFCBANK": 0,
-    "ICICIBANK": 0,
-    "SBIN": 0,
+future_price_state = {
+    "BANKNIFTY": {"ticks": []},
+    "HDFCBANK": {"ticks": []},
+    "ICICIBANK": {"ticks": []},
+    "SBIN": {"ticks": []},
 }
 
 def now():
@@ -250,6 +294,170 @@ def get_option_moneyness(symbol, future_prices):
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
+def check_momentum_trends(symbol, state, future_price_state):
+    """
+    Analyzes the 5-minute historical data for a symbol to detect one of four momentum trends.
+    Returns a tuple of (trend_type, analysis_data) if a trend is detected, otherwise None.
+    """
+    ticks = state.get("ticks", [])
+    
+    # --- 1. Pre-computation and Validation ---
+    
+    # Ensure we have enough data to analyze
+    if len(ticks) < 2:
+        return None # Not enough data
+
+    first_tick_time = ticks[0][0]
+    last_tick_time = ticks[-1][0]
+    window_duration = last_tick_time - first_tick_time
+
+    # Ensure the data spans a meaningful amount of time (e.g., at least half the window)
+    if window_duration < MOMENTUM_WINDOW / 2:
+        return None
+
+    # Get underlying name
+    underlying = next((name for name in future_price_state if name in symbol), None)
+    if not underlying:
+        return None
+
+    # Get future price ticks and find the corresponding start price
+    future_ticks = future_price_state[underlying].get("ticks", [])
+    if not future_ticks:
+        return None
+    
+    # Find the future price at the start of the option's window
+    start_future_price_tick = next((ft for ft in future_ticks if ft[0] >= first_tick_time), None)
+    if not start_future_price_tick:
+        return None # No matching future data for the period
+
+    start_future_price = start_future_price_tick[1]
+    end_future_price = future_ticks[-1][1]
+
+    # --- 2. Calculate Deltas ---
+    
+    start_option_price = ticks[0][1]
+    end_option_price = ticks[-1][1]
+    start_oi = ticks[0][2]
+    end_oi = ticks[-1][2]
+
+    future_price_chg = end_future_price - start_future_price
+    option_price_chg = end_option_price - start_option_price
+    oi_chg = end_oi - start_oi
+
+    # --- Add new lots threshold criteria (user requested) ---
+    total_lots_in_window = lots_from_oi_change(symbol, oi_chg)
+    if abs(total_lots_in_window) <= 300:
+        return None # Ignore if lots are not above 300
+
+    # Determine option type
+    is_call = "CE" in symbol
+    
+    # --- 3. Trend Classification ---
+    
+    trend_type = None
+
+    # Check for rising future price (uptrend)
+    if future_price_chg > 0:
+        price_condition_met = (is_call and option_price_chg > 0) or (not is_call and option_price_chg < 0)
+        if price_condition_met:
+            if oi_chg > 0:
+                trend_type = "📈 STRONG UPTREND"
+            elif oi_chg < 0:
+                trend_type = "⚠️ WEAK UPTREND (Short Covering)"
+
+    # Check for falling future price (downtrend)
+    elif future_price_chg < 0:
+        price_condition_met = (is_call and option_price_chg < 0) or (not is_call and option_price_chg > 0)
+        if price_condition_met:
+            if oi_chg > 0:
+                trend_type = "📉 STRONG DOWNTREND"
+            elif oi_chg < 0:
+                trend_type = "⚠️ WEAK DOWNTREND (Long Unwinding)"
+
+    # --- 4. Return Result ---
+
+    if trend_type:
+        analysis_data = {
+            "start_time": first_tick_time,
+            "end_time": last_tick_time,
+            "duration": window_duration,
+            "start_oi": start_oi,
+            "end_oi": end_oi,
+            "oi_chg": oi_chg,
+            "start_option_price": start_option_price,
+            "end_option_price": end_option_price,
+            "option_price_chg": option_price_chg,
+            "start_future_price": start_future_price,
+            "end_future_price": end_future_price,
+            "future_price_chg": future_price_chg,
+        }
+        return (trend_type, analysis_data)
+
+    return None
+
+def format_momentum_alert(symbol, trend_type, data):
+    """
+    Formats the 5-minute momentum alert message.
+    """
+    # --- Product & Strike Info ---
+    product_name, strike_display, option_type, year = "UNKNOWN", "N/A", "", ""
+    if "HDFCBANK" in symbol: product_name = "HDFCBANK"
+    elif "ICICIBANK" in symbol: product_name = "ICICI"
+    elif "SBIN" in symbol: product_name = "SBIN"
+    elif "BANKNIFTY" in symbol: product_name = "BANKNIFTY"
+    
+    try:
+        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
+        if match:
+            year, strike_display, option_type = match.groups()
+    except Exception:
+        pass
+
+    # --- Calculations ---
+    lots = lots_from_oi_change(symbol, data['oi_chg'])
+    try:
+        oi_roc = (data['oi_chg'] / data['start_oi']) * 100
+    except ZeroDivisionError:
+        oi_roc = 0.0
+    
+    try:
+        future_price_roc = (data['future_price_chg'] / data['start_future_price']) * 100
+    except ZeroDivisionError:
+        future_price_roc = 0.0
+
+    try:
+        option_price_roc = (data['option_price_chg'] / data['start_option_price']) * 100
+    except ZeroDivisionError:
+        option_price_roc = 0.0
+
+    # --- Formatting ---
+    header = "- - - 5-Min Momentum Alert - - -"
+    line1 = f"{product_name} | {strike_display}{option_type}"
+    line2 = f"\n{trend_type} Confirmed\n"
+    
+    oi_line = f"OI Δ: {data['oi_chg']:+,.0f} ({lots} lots)"
+    oi_roc_line = f"OI RoC: {oi_roc:+.2f}%"
+    
+    future_price_line = f"Future Price Δ: {data['future_price_chg']:+.2f} ({future_price_roc:+.2f}%)"
+    option_price_line = f"Option Price Δ: {data['option_price_chg']:+.2f} ({option_price_roc:+.2f}%)"
+
+    last_price_line = f"Last Option Price: {data['end_option_price']:.2f}"
+    last_future_line = f"Last Future Price: {data['end_future_price']:.2f}"
+
+    duration_minutes = int(data['duration'] // 60)
+    duration_seconds = int(data['duration'] % 60)
+    start_time_str = datetime.fromtimestamp(data['start_time']).strftime('%H:%M')
+    end_time_str = datetime.fromtimestamp(data['end_time']).strftime('%H:%M')
+    duration_line = f"Duration: {duration_minutes}m {duration_seconds}s ({start_time_str} -> {end_time_str})"
+    
+    footer = "- - - - - - - - - - - - - - - -"
+
+    return "\n".join([
+        header, line1, line2, oi_line, oi_roc_line, future_price_line, option_price_line,
+        "", last_price_line, last_future_line, duration_line, footer
+    ])
+
+
 def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices):
     """Formats the alert message, showing N/A for missing IV."""
     price_chg = state['price'] - state['price_prev']
@@ -349,7 +557,7 @@ async def process_data(data):
     if new_price is None:
         return
 
-    # If the symbol is a future, update its price and stop processing
+    # If the symbol is a future, update its price history and stop processing
     if "FUT" in symbol:
         underlying = None
         if "HDFCBANK" in symbol: underlying = "HDFCBANK"
@@ -358,15 +566,28 @@ async def process_data(data):
         elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
         
         if underlying and new_price > 0: # Ensure price is valid
-            future_prices[underlying] = new_price
+            current_time = time.time()
+            future_state = future_price_state[underlying]
+            future_state["ticks"].append((current_time, new_price))
+            # Prune old data points
+            future_state["ticks"] = [tick for tick in future_state["ticks"] if current_time - tick[0] <= MOMENTUM_WINDOW]
         return
 
-    # --- Standard processing for Option contracts ---
     state = symbol_data_state[symbol]
     new_oi = data.get("OpenInterest")
 
     if new_oi is None:
         return
+
+    # --- History Management for Momentum Alerts ---
+    current_time = time.time()
+    # Add the new data point to the history if it's valid
+    if new_price > 0 and new_oi > 0:
+        state["ticks"].append((current_time, new_price, new_oi))
+    # Prune old data points from the history
+    state["ticks"] = [tick for tick in state["ticks"] if current_time - tick[0] <= MOMENTUM_WINDOW]
+
+    # --- Standard processing for Option contracts ---
 
     state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
     state["price"], state["oi"] = new_price, new_oi
@@ -412,8 +633,33 @@ async def process_data(data):
             if bucket != "IGNORE":
                 print(f"📊 [{now()}] {symbol}: {'Future' if is_future else moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
                 action = classify_option(oi_chg, price_chg, symbol)
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices)
+                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state)
                 await send_alert(alert_msg)
+
+    # --- Momentum Alert Logic ---
+    # This is called on every tick to check for a developing trend.
+    analysis_result = check_momentum_trends(symbol, state, future_price_state)
+    if analysis_result:
+        trend_type, trend_data = analysis_result
+        
+        current_time = time.time()
+        last_alert_time = state.get("last_trend_alert_time", 0)
+        last_alert_type = state.get("last_trend_alert_type", None)
+        
+        # Only alert if the trend type is new or if it's been more than 5 mins since the last alert of the same type
+        if trend_type != last_alert_type or (current_time - last_alert_time) > MOMENTUM_WINDOW:
+            print(f"📈 [{now()}] {symbol}: Momentum Trend Detected - {trend_type}. TRIGGERING ALERT.", flush=True)
+            
+            # Format the specific momentum alert message
+            alert_msg = format_momentum_alert(symbol, trend_type, trend_data)
+            await send_alert(alert_msg)
+            
+            # Update state to prevent re-alerting immediately
+            state["last_trend_alert_type"] = trend_type
+            state["last_trend_alert_time"] = current_time
+        else:
+            # This trend is ongoing, but we've already alerted recently. Suppress.
+            print(f"📈 [{now()}] {symbol}: Ongoing momentum trend '{trend_type}'. Alert suppressed.", flush=True)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
