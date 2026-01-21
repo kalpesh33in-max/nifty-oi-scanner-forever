@@ -42,98 +42,98 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
-    "SBIN27JAN261040CE",
-    "SBIN27JAN261040PE",
-    "SBIN27JAN261035CE",
-    "SBIN27JAN261035PE",
-    "SBIN27JAN261030CE",
-    "SBIN27JAN261030PE",
-    "SBIN27JAN261025CE",
-    "SBIN27JAN261025PE",
-    "SBIN27JAN261020CE",
-    "SBIN27JAN261020PE",
-    "SBIN27JAN261015CE",
-    "SBIN27JAN261015PE",
-    "SBIN27JAN261045CE",
-    "SBIN27JAN261045PE",
-    "SBIN27JAN261050CE",
-    "SBIN27JAN261050PE",
-    "SBIN27JAN261055CE",
-    "SBIN27JAN261055PE",
-    "SBIN27JAN261060CE",
-    "SBIN27JAN261060PE",
-    "SBIN27JAN261065CE",
-    "SBIN27JAN261065PE",
-    "HDFCBANK27JAN26930CE",
-    "HDFCBANK27JAN26930PE",
-    "HDFCBANK27JAN26925CE",
-    "HDFCBANK27JAN26925PE",
-    "HDFCBANK27JAN26920CE",
-    "HDFCBANK27JAN26920PE",
-    "HDFCBANK27JAN26915CE",
-    "HDFCBANK27JAN26915PE",
-    "HDFCBANK27JAN26910CE",
-    "HDFCBANK27JAN26910PE",
+    "BANKNIFTY27JAN2658300CE",
+    "BANKNIFTY27JAN2658300PE",
+    "BANKNIFTY27JAN2658400CE",
+    "BANKNIFTY27JAN2658400PE",
+    "BANKNIFTY27JAN2658500CE",
+    "BANKNIFTY27JAN2658500PE",
+    "BANKNIFTY27JAN2658600CE",
+    "BANKNIFTY27JAN2658600PE",
+    "BANKNIFTY27JAN2658700CE",
+    "BANKNIFTY27JAN2658700PE",
+    "BANKNIFTY27JAN2658800CE",
+    "BANKNIFTY27JAN2658800PE",
+    "BANKNIFTY27JAN2658900CE",
+    "BANKNIFTY27JAN2658900PE",
+    "BANKNIFTY27JAN2659000CE",
+    "BANKNIFTY27JAN2659000PE",
+    "BANKNIFTY27JAN2659100CE",
+    "BANKNIFTY27JAN2659100PE",
+    "BANKNIFTY27JAN2659200CE",
+    "BANKNIFTY27JAN2659200PE",
+    "BANKNIFTY27JAN2659300CE",
+    "BANKNIFTY27JAN2659300PE",
+    "HDFCBANK27JAN26895CE",
+    "HDFCBANK27JAN26895PE",
+    "HDFCBANK27JAN26900CE",
+    "HDFCBANK27JAN26900PE",
     "HDFCBANK27JAN26905CE",
     "HDFCBANK27JAN26905PE",
+    "HDFCBANK27JAN26910CE",
+    "HDFCBANK27JAN26910PE",
+    "HDFCBANK27JAN26915CE",
+    "HDFCBANK27JAN26915PE",
+    "HDFCBANK27JAN26920CE",
+    "HDFCBANK27JAN26920PE",
+    "HDFCBANK27JAN26925CE",
+    "HDFCBANK27JAN26925PE",
+    "HDFCBANK27JAN26930CE",
+    "HDFCBANK27JAN26930PE",
     "HDFCBANK27JAN26935CE",
     "HDFCBANK27JAN26935PE",
     "HDFCBANK27JAN26940CE",
     "HDFCBANK27JAN26940PE",
     "HDFCBANK27JAN26945CE",
     "HDFCBANK27JAN26945PE",
-    "HDFCBANK27JAN26950CE",
-    "HDFCBANK27JAN26950PE",
-    "HDFCBANK27JAN26955CE",
-    "HDFCBANK27JAN26955PE",
-    "BANKNIFTY27JAN26FUT",
-    "HDFCBANK27JAN26FUT",
-    "ICICIBANK27JAN26FUT",
-    "SBIN27JAN26FUT",
-    "ICICIBANK27JAN261380CE",
-    "ICICIBANK27JAN261380PE",
-    "ICICIBANK27JAN261370CE",
-    "ICICIBANK27JAN261370PE",
-    "ICICIBANK27JAN261360CE",
-    "ICICIBANK27JAN261360PE",
-    "ICICIBANK27JAN261350CE",
-    "ICICIBANK27JAN261350PE",
-    "ICICIBANK27JAN261340CE",
-    "ICICIBANK27JAN261340PE",
+    "ICICIBANK27JAN261300CE",
+    "ICICIBANK27JAN261300PE",
+    "ICICIBANK27JAN261310CE",
+    "ICICIBANK27JAN261310PE",
+    "ICICIBANK27JAN261320CE",
+    "ICICIBANK27JAN261320PE",
     "ICICIBANK27JAN261330CE",
     "ICICIBANK27JAN261330PE",
+    "ICICIBANK27JAN261340CE",
+    "ICICIBANK27JAN261340PE",
+    "ICICIBANK27JAN261350CE",
+    "ICICIBANK27JAN261350PE",
+    "ICICIBANK27JAN261360CE",
+    "ICICIBANK27JAN261360PE",
+    "ICICIBANK27JAN261370CE",
+    "ICICIBANK27JAN261370PE",
+    "ICICIBANK27JAN261380CE",
+    "ICICIBANK27JAN261380PE",
     "ICICIBANK27JAN261390CE",
     "ICICIBANK27JAN261390PE",
     "ICICIBANK27JAN261400CE",
     "ICICIBANK27JAN261400PE",
-    "ICICIBANK27JAN261410CE",
-    "ICICIBANK27JAN261410PE",
-    "ICICIBANK27JAN261420CE",
-    "ICICIBANK27JAN261420PE",
-    "ICICIBANK27JAN261430CE",
-    "ICICIBANK27JAN261430PE",
-    "BANKNIFTY27JAN2659500CE",
-    "BANKNIFTY27JAN2659500PE",
-    "BANKNIFTY27JAN2659400CE",
-    "BANKNIFTY27JAN2659400PE",
-    "BANKNIFTY27JAN2659300CE",
-    "BANKNIFTY27JAN2659300PE",
-    "BANKNIFTY27JAN2659200CE",
-    "BANKNIFTY27JAN2659200PE",
-    "BANKNIFTY27JAN2659100CE",
-    "BANKNIFTY27JAN2659100PE",
-    "BANKNIFTY27JAN2659000CE",
-    "BANKNIFTY27JAN2659000PE",
-    "BANKNIFTY27JAN2659600CE",
-    "BANKNIFTY27JAN2659600PE",
-    "BANKNIFTY27JAN2659700CE",
-    "BANKNIFTY27JAN2659700PE",
-    "BANKNIFTY27JAN2659800CE",
-    "BANKNIFTY27JAN2659800PE",
-    "BANKNIFTY27JAN2659900CE",
-    "BANKNIFTY27JAN2659900PE",
-    "BANKNIFTY27JAN2660000CE",
-    "BANKNIFTY27JAN2660000PE",
+    "SBIN27JAN261005CE",
+    "SBIN27JAN261005PE",
+    "SBIN27JAN261010CE",
+    "SBIN27JAN261010PE",
+    "SBIN27JAN261015CE",
+    "SBIN27JAN261015PE",
+    "SBIN27JAN261020CE",
+    "SBIN27JAN261020PE",
+    "SBIN27JAN261025CE",
+    "SBIN27JAN261025PE",
+    "SBIN27JAN261030CE",
+    "SBIN27JAN261030PE",
+    "SBIN27JAN261035CE",
+    "SBIN27JAN261035PE",
+    "SBIN27JAN261040CE",
+    "SBIN27JAN261040PE",
+    "SBIN27JAN261045CE",
+    "SBIN27JAN261045PE",
+    "SBIN27JAN261050CE",
+    "SBIN27JAN261050PE",
+    "SBIN27JAN261055CE",
+    "SBIN27JAN261055PE",
+    "BANKNIFTY27JAN26FUT",
+    "HDFCBANK27JAN26FUT",
+    "ICICIBANK27JAN26FUT",
+    "SBIN27JAN26FUT",
 ]
 
 # --- Logic & Thresholds ---
@@ -241,7 +241,7 @@ def classify_option(oi_change, price_change, symbol):
     
     return "Indecisive Movement"
 
-def get_option_moneyness(symbol, future_prices):
+def get_option_moneyness(symbol, future_price_state):
     """
     Checks if an option is ITM, ATM, or OTM based on the latest future price.
     Returns a string: "ITM", "ATM", or "OTM".
@@ -260,7 +260,7 @@ def get_option_moneyness(symbol, future_prices):
     if not underlying: 
         return "N/A" # If it's not one of our known underlyings, don't block it
 
-    future_price = future_prices.get(underlying)
+    future_price = future_price_state.get(underlying)
     if not future_price or future_price == 0:
         print(f"⏳ [{now()}] {symbol}: Waiting for future price of {underlying} to check moneyness.", flush=True)
         return "OTM" # Treat as OTM if we don't have the future price yet
@@ -467,7 +467,7 @@ def format_momentum_alert(symbol, trend_type, data):
     ])
 
 
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices):
+def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state):
     """Formats the alert message, showing N/A for missing IV."""
     price_chg = state['price'] - state['price_prev']
     if price_chg > 0:
@@ -530,7 +530,7 @@ TIME: {now()}
         underlying_lookup_key = product_name
         if product_name == "ICICI":
             underlying_lookup_key = "ICICIBANK"
-        future_price = future_prices.get(underlying_lookup_key, 0)
+        future_price = future_price_state.get(underlying_lookup_key, 0)
         line1 = f"{product_name} | OPTION"
         line2 = f"STRIKE: {strike_display}{option_type_display} {moneyness}"
         line3 = f"ACTION: {action}"
@@ -555,7 +555,7 @@ async def process_data(data):
     Processes a single data packet, updating future prices or sending option alerts.
     Option alerts are filtered to only include ITM/ATM strikes.
     """
-    global symbol_data_state, future_prices
+    global symbol_data_state, future_price_state
     
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state:
@@ -565,13 +565,9 @@ async def process_data(data):
     if new_price is None:
         return
 
-    # If the symbol is a future, update its price history and stop processing
+    # If the symbol is a future, update its price history and stop processing for alerts
     if "FUT" in symbol:
-        underlying = None
-        if "HDFCBANK" in symbol: underlying = "HDFCBANK"
-        elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
-        elif "SBIN" in symbol: underlying = "SBIN"
-        elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
+        underlying = next((name for name in future_price_state if name in symbol), None)
         
         if underlying and new_price > 0: # Ensure price is valid
             current_time = time.time()
@@ -579,8 +575,9 @@ async def process_data(data):
             future_state["ticks"].append((current_time, new_price))
             # Prune old data points
             future_state["ticks"] = [tick for tick in future_state["ticks"] if current_time - tick[0] <= MOMENTUM_WINDOW]
-        return
+        return # Stop processing here for futures
 
+    # The rest of the function will only execute for OPTIONS
     state = symbol_data_state[symbol]
     new_oi = data.get("OpenInterest")
 
@@ -621,24 +618,19 @@ async def process_data(data):
         print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
         
         lots = lots_from_oi_change(symbol, oi_chg)
-        is_future = "FUT" in symbol
         
-        # <<< NEW: Differentiated alert logic for Futures vs Options >>>
         alert_condition_met = False
-        moneyness = "N/A" # Default for futures
+        moneyness = "N/A" 
 
         if lots > 100:
-            if is_future:
+            moneyness = get_option_moneyness(symbol, future_price_state)
+            if moneyness in ["ITM", "ATM"]:
                 alert_condition_met = True
-            else:  # It's an option
-                moneyness = get_option_moneyness(symbol, future_prices)
-                if moneyness in ["ITM", "ATM"]:
-                    alert_condition_met = True
         
         if alert_condition_met:
             bucket = lot_bucket(lots)
             if bucket != "IGNORE":
-                print(f"📊 [{now()}] {symbol}: {'Future' if is_future else moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
+                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
                 action = classify_option(oi_chg, price_chg, symbol)
                 alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state)
                 await send_alert(alert_msg)
