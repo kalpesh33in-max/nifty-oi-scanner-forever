@@ -90,28 +90,6 @@ SYMBOLS_TO_MONITOR = [
     "HDFCBANK27JAN26FUT",
     "ICICIBANK27JAN26FUT",
     "SBIN27JAN26FUT",
-    "BANKNIFTY27JAN2659900CE",
-    "BANKNIFTY27JAN2659900PE",
-    "BANKNIFTY27JAN2659800CE",
-    "BANKNIFTY27JAN2659800PE",
-    "BANKNIFTY27JAN2659700CE",
-    "BANKNIFTY27JAN2659700PE",
-    "BANKNIFTY27JAN2659600CE",
-    "BANKNIFTY27JAN2659600PE",
-    "BANKNIFTY27JAN2659500CE",
-    "BANKNIFTY27JAN2659500PE",
-    "BANKNIFTY27JAN2659400CE",
-    "BANKNIFTY27JAN2659400PE",
-    "BANKNIFTY27JAN2660000CE",
-    "BANKNIFTY27JAN2660000PE",
-    "BANKNIFTY27JAN2660100CE",
-    "BANKNIFTY27JAN2660100PE",
-    "BANKNIFTY27JAN2660200CE",
-    "BANKNIFTY27JAN2660200PE",
-    "BANKNIFTY27JAN2660300CE",
-    "BANKNIFTY27JAN2660300PE",
-    "BANKNIFTY27JAN2660400CE",
-    "BANKNIFTY27JAN2660400PE",
     "ICICIBANK27JAN261380CE",
     "ICICIBANK27JAN261380PE",
     "ICICIBANK27JAN261370CE",
@@ -133,7 +111,29 @@ SYMBOLS_TO_MONITOR = [
     "ICICIBANK27JAN261420CE",
     "ICICIBANK27JAN261420PE",
     "ICICIBANK27JAN261430CE",
-    "ICICIBANK27JAN261430PE"
+    "ICICIBANK27JAN261430PE",
+    "BANKNIFTY27JAN2659500CE",
+    "BANKNIFTY27JAN2659500PE",
+    "BANKNIFTY27JAN2659400CE",
+    "BANKNIFTY27JAN2659400PE",
+    "BANKNIFTY27JAN2659300CE",
+    "BANKNIFTY27JAN2659300PE",
+    "BANKNIFTY27JAN2659200CE",
+    "BANKNIFTY27JAN2659200PE",
+    "BANKNIFTY27JAN2659100CE",
+    "BANKNIFTY27JAN2659100PE",
+    "BANKNIFTY27JAN2659000CE",
+    "BANKNIFTY27JAN2659000PE",
+    "BANKNIFTY27JAN2659600CE",
+    "BANKNIFTY27JAN2659600PE",
+    "BANKNIFTY27JAN2659700CE",
+    "BANKNIFTY27JAN2659700PE",
+    "BANKNIFTY27JAN2659800CE",
+    "BANKNIFTY27JAN2659800PE",
+    "BANKNIFTY27JAN2659900CE",
+    "BANKNIFTY27JAN2659900PE",
+    "BANKNIFTY27JAN2660000CE",
+    "BANKNIFTY27JAN2660000PE",
 ]
 
 # --- Logic & Thresholds ---
@@ -180,7 +180,7 @@ async def send_telegram(msg: str):
     print(f"📦 [{now()}] Preparing to send Telegram message...", flush=True)
     loop = asyncio.get_running_loop()
     
-    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
+    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg}
     
     # Use functools.partial to prepare the blocking function with its arguments
     blocking_call = functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10)
@@ -349,6 +349,15 @@ def check_momentum_trends(symbol, state, future_price_state):
     if abs(total_lots_in_window) <= 300:
         return None # Ignore if lots are not above 300
 
+    # --- Add OI ROC threshold criteria (user requested) ---
+    try:
+        oi_roc = (oi_chg / start_oi) * 100
+    except ZeroDivisionError:
+        oi_roc = 0.0
+    
+    if abs(oi_roc) <= 2.0:
+        return None # Ignore if OI ROC is not above 2.0
+
     # Determine option type
     is_call = "CE" in symbol
     
@@ -508,7 +517,6 @@ ACTION: {action}
 SIZE: {bucket} ({lots} lots)
 EXISTING OI: {state['oi_prev']}
 OI Δ: {oi_chg}
-OI RoC: {oi_roc:.2f}%
 PRICE: {price_dir}
 TIME: {now()}
 """
@@ -619,11 +627,10 @@ async def process_data(data):
         alert_condition_met = False
         moneyness = "N/A" # Default for futures
 
-        if is_future:
-            if lots > 50:
+        if lots > 100:
+            if is_future:
                 alert_condition_met = True
-        else: # It's an option
-            if lots > 100:
+            else:  # It's an option
                 moneyness = get_option_moneyness(symbol, future_prices)
                 if moneyness in ["ITM", "ATM"]:
                     alert_condition_met = True
