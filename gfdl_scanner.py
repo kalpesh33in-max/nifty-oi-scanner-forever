@@ -296,119 +296,97 @@ def get_option_moneyness(symbol, future_price_state):
 
 def check_momentum_trends(symbol, state, future_price_state):
     """
-    Analyzes the 5-minute historical data for a symbol to detect one of four momentum trends.
-    Returns a tuple of (trend_type, analysis_data) if a trend is detected, otherwise None.
+    Analyzes 5-minute data based on "logic 2.pdf" cases.
+    Returns a tuple of (trend_name, interpretation, analysis_data) if a case is matched.
     """
     ticks = state.get("ticks", [])
-    
-    # --- 1. Pre-computation and Validation ---
-    
-    # Ensure we have enough data to analyze
-    if len(ticks) < 2:
-        return None # Not enough data
+    if len(ticks) < 2: return None
 
-    first_tick_time = ticks[0][0]
-    last_tick_time = ticks[-1][0]
+    first_tick_time, last_tick_time = ticks[0][0], ticks[-1][0]
     window_duration = last_tick_time - first_tick_time
+    if window_duration < MOMENTUM_WINDOW / 2: return None
 
-    # Ensure the data spans a meaningful amount of time (e.g., at least half the window)
-    if window_duration < MOMENTUM_WINDOW / 2:
-        return None
-
-    # Get underlying name
     underlying = next((name for name in future_price_state if name in symbol), None)
-    if not underlying:
-        return None
+    if not underlying: return None
 
-    # Get future price ticks and find the corresponding start price
     future_ticks = future_price_state[underlying].get("ticks", [])
-    if not future_ticks:
-        return None
+    if not future_ticks: return None
     
-    # Find the future price at the start of the option's window
     start_future_price_tick = next((ft for ft in future_ticks if ft[0] >= first_tick_time), None)
-    if not start_future_price_tick:
-        return None # No matching future data for the period
-
+    if not start_future_price_tick: return None
     start_future_price = start_future_price_tick[1]
     end_future_price = future_ticks[-1][1]
 
-    # --- 2. Calculate Deltas ---
-    
-    start_option_price = ticks[0][1]
-    end_option_price = ticks[-1][1]
-    start_oi = ticks[0][2]
-    end_oi = ticks[-1][2]
+    start_option_price, start_oi = ticks[0][1], ticks[0][2]
+    end_option_price, end_oi = ticks[-1][1], ticks[-1][2]
 
     future_price_chg = end_future_price - start_future_price
     option_price_chg = end_option_price - start_option_price
     oi_chg = end_oi - start_oi
 
-    # --- Add new lots threshold criteria (user requested) ---
-    total_lots_in_window = lots_from_oi_change(symbol, oi_chg)
-    if abs(total_lots_in_window) <= 300:
-        return None # Ignore if lots are not above 300
-
-    # --- Add OI ROC threshold criteria (user requested) ---
+    if abs(lots_from_oi_change(symbol, oi_chg)) <= 300: return None
     try:
-        oi_roc = (oi_chg / start_oi) * 100
+        if abs((oi_chg / start_oi) * 100) <= 2.0: return None
     except ZeroDivisionError:
-        oi_roc = 0.0
-    
-    if abs(oi_roc) <= 2.0:
-        return None # Ignore if OI ROC is not above 2.0
+        return None
 
-    # Determine option type
     is_call = "CE" in symbol
+    is_put = "PE" in symbol
+    future_up = future_price_chg > 0
+    future_down = future_price_chg < 0
+    future_flat = not future_up and not future_down
+    price_up = option_price_chg > 0
+    price_down = option_price_chg < 0
+    oi_up = oi_chg > 0
+    oi_down = oi_chg < 0
     
-    # --- 3. Trend Classification ---
-    
-    trend_type = None
+    trend_name, interpretation = None, None
 
-    # Check for rising future price (uptrend)
-    if future_price_chg > 0:
-        price_condition_met = (is_call and option_price_chg > 0) or (not is_call and option_price_chg < 0)
-        if price_condition_met:
-            if oi_chg > 0:
-                trend_type = "📈 STRONG UPTREND"
-            elif oi_chg < 0:
-                trend_type = "⚠️ WEAK UPTREND (Short Covering)"
+    # Bullish Cases
+    if is_call and future_up and price_down and oi_up:
+        trend_name = "📈 Case-1: Strong Bullish (Smart money)"
+        interpretation = "Call writing + Future moving up -> Resistance absorbed -> slow trending up"
+    elif is_call and future_up and price_up and oi_down:
+        trend_name = "📈 Case-2: Breakout Bullish"
+        interpretation = "Call writers trapped -> Fast upside move"
+    elif is_put and future_up and price_down and oi_up:
+        trend_name = "📈 Case-3: Support-based Bullish"
+        interpretation = "Put writing -> Strong support below"
+        
+    # Bearish Cases
+    elif is_put and future_down and price_down and oi_up:
+        trend_name = "📉 Case-4: Strong Bearish (Smart money)"
+        interpretation = "Put writing + downside control -> Slow grind down"
+    elif is_put and future_down and price_up and oi_down:
+        trend_name = "📉 Case-5: Breakdown Bearish"
+        interpretation = "Put writers trapped -> Fast fall"
+    elif is_call and future_down and price_down and oi_up:
+        trend_name = "📉 Case-6: Resistance-based Bearish"
+        interpretation = "Call writing -> Strong resistance above"
 
-    # Check for falling future price (downtrend)
-    elif future_price_chg < 0:
-        price_condition_met = (is_call and option_price_chg < 0) or (not is_call and option_price_chg > 0)
-        if price_condition_met:
-            if oi_chg > 0:
-                trend_type = "📉 STRONG DOWNTREND"
-            elif oi_chg < 0:
-                trend_type = "⚠️ WEAK DOWNTREND (Long Unwinding)"
+    # Trap Conditions
+    elif is_call and (future_flat or future_down) and price_up and oi_up:
+        trend_name = "🚨 Bull Trap"
+        interpretation = "Retail buying calls -> Avoid longs"
+    elif is_put and (future_flat or future_up) and price_up and oi_up:
+        trend_name = "🚨 Bear Trap"
+        interpretation = "Panic buying puts -> Avoid shorts"
 
-    # --- 4. Return Result ---
-
-    if trend_type:
+    if trend_name:
         analysis_data = {
-            "start_time": first_tick_time,
-            "end_time": last_tick_time,
-            "duration": window_duration,
-            "start_oi": start_oi,
-            "end_oi": end_oi,
-            "oi_chg": oi_chg,
-            "start_option_price": start_option_price,
-            "end_option_price": end_option_price,
-            "option_price_chg": option_price_chg,
-            "start_future_price": start_future_price,
-            "end_future_price": end_future_price,
-            "future_price_chg": future_price_chg,
+            "start_time": first_tick_time, "end_time": last_tick_time, "duration": window_duration,
+            "start_oi": start_oi, "end_oi": end_oi, "oi_chg": oi_chg,
+            "start_option_price": start_option_price, "end_option_price": end_option_price, "option_price_chg": option_price_chg,
+            "start_future_price": start_future_price, "end_future_price": end_future_price, "future_price_chg": future_price_chg,
         }
-        return (trend_type, analysis_data)
-
+        return (trend_name, interpretation, analysis_data)
+        
     return None
 
-def format_momentum_alert(symbol, trend_type, data):
+def format_momentum_alert(symbol, trend_name, interpretation, data):
     """
-    Formats the 5-minute momentum alert message.
+    Formats the 5-minute momentum alert message based on the new "logic 2.pdf" format.
     """
-    # --- Product & Strike Info ---
     product_name, strike_display, option_type, year = "UNKNOWN", "N/A", "", ""
     if "HDFCBANK" in symbol: product_name = "HDFCBANK"
     elif "ICICIBANK" in symbol: product_name = "ICICI"
@@ -417,42 +395,36 @@ def format_momentum_alert(symbol, trend_type, data):
     
     try:
         match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
-        if match:
-            year, strike_display, option_type = match.groups()
-    except Exception:
-        pass
+        if match: year, strike_display, option_type = match.groups()
+    except Exception: pass
 
-    # --- Calculations ---
     lots = lots_from_oi_change(symbol, data['oi_chg'])
     try:
         oi_roc = (data['oi_chg'] / data['start_oi']) * 100
     except ZeroDivisionError:
         oi_roc = 0.0
-    
-    try:
-        future_price_roc = (data['future_price_chg'] / data['start_future_price']) * 100
-    except ZeroDivisionError:
-        future_price_roc = 0.0
 
-    try:
-        option_price_roc = (data['option_price_chg'] / data['start_option_price']) * 100
-    except ZeroDivisionError:
-        option_price_roc = 0.0
+    # --- Movement Indicators ---
+    future_dir = "↑" if data['future_price_chg'] > 0 else "↓" if data['future_price_chg'] < 0 else "↔"
+    option_dir = "↑" if data['option_price_chg'] > 0 else "↓" if data['option_price_chg'] < 0 else "↔"
+    oi_dir = "↑" if data['oi_chg'] > 0 else "↓"
 
     # --- Formatting ---
     header = "- - - 5-Min Momentum Alert - - -"
     line1 = f"{product_name} | {strike_display}{option_type}"
-    line2 = f"\n{trend_type} Confirmed\n"
+    line2 = f"\n{trend_name}\nInterpretation: {interpretation}\n"
     
-    oi_line = f"OI Δ: {data['oi_chg']:+,.0f} ({lots} lots)"
+    analysis_header = "--- Analysis Breakdown ---"
+    future_line = f"Future Price:   {future_dir} ({data['future_price_chg']:+.2f})"
+    option_line = f"Option Price:   {option_dir} ({data['option_price_chg']:+.2f})"
+    oi_line =     f"Option OI:      {oi_dir} ({data['oi_chg']:+,.0f})"
+    
+    data_header = "\n--- Data Points ---"
+    oi_delta_line = f"OI Δ: {data['oi_chg']:+,.0f} ({lots} lots)"
     oi_roc_line = f"OI RoC: {oi_roc:+.2f}%"
+    last_option_price_line = f"Last Option Price: {data['end_option_price']:.2f}"
+    last_future_price_line = f"Last Future Price: {data['end_future_price']:.2f}"
     
-    future_price_line = f"Future Price Δ: {data['future_price_chg']:+.2f} ({future_price_roc:+.2f}%)"
-    option_price_line = f"Option Price Δ: {data['option_price_chg']:+.2f} ({option_price_roc:+.2f}%)"
-
-    last_price_line = f"Last Option Price: {data['end_option_price']:.2f}"
-    last_future_line = f"Last Future Price: {data['end_future_price']:.2f}"
-
     duration_minutes = int(data['duration'] // 60)
     duration_seconds = int(data['duration'] % 60)
     start_time_str = datetime.fromtimestamp(data['start_time']).strftime('%H:%M')
@@ -462,8 +434,9 @@ def format_momentum_alert(symbol, trend_type, data):
     footer = "- - - - - - - - - - - - - - - -"
 
     return "\n".join([
-        header, line1, line2, oi_line, oi_roc_line, future_price_line, option_price_line,
-        "", last_price_line, last_future_line, duration_line, footer
+        header, line1, line2, analysis_header, future_line, option_line, oi_line,
+        data_header, oi_delta_line, oi_roc_line, last_option_price_line,
+        last_future_price_line, duration_line, footer
     ])
 
 
@@ -630,26 +603,26 @@ async def process_data(data):
     # This is called on every tick to check for a developing trend.
     analysis_result = check_momentum_trends(symbol, state, future_price_state)
     if analysis_result:
-        trend_type, trend_data = analysis_result
+        trend_name, interpretation, trend_data = analysis_result
         
         current_time = time.time()
         last_alert_time = state.get("last_trend_alert_time", 0)
         last_alert_type = state.get("last_trend_alert_type", None)
         
         # Only alert if the trend type is new or if it's been more than 5 mins since the last alert of the same type
-        if trend_type != last_alert_type or (current_time - last_alert_time) > MOMENTUM_WINDOW:
-            print(f"📈 [{now()}] {symbol}: Momentum Trend Detected - {trend_type}. TRIGGERING ALERT.", flush=True)
+        if trend_name != last_alert_type or (current_time - last_alert_time) > MOMENTUM_WINDOW:
+            print(f"📈 [{now()}] {symbol}: Momentum Trend Detected - {trend_name}. TRIGGERING ALERT.", flush=True)
             
             # Format the specific momentum alert message
-            alert_msg = format_momentum_alert(symbol, trend_type, trend_data)
+            alert_msg = format_momentum_alert(symbol, trend_name, interpretation, trend_data)
             await send_alert(alert_msg)
             
             # Update state to prevent re-alerting immediately
-            state["last_trend_alert_type"] = trend_type
+            state["last_trend_alert_type"] = trend_name
             state["last_trend_alert_time"] = current_time
         else:
             # This trend is ongoing, but we've already alerted recently. Suppress.
-            print(f"📈 [{now()}] {symbol}: Ongoing momentum trend '{trend_type}'. Alert suppressed.", flush=True)
+            print(f"📈 [{now()}] {symbol}: Ongoing momentum trend '{trend_name}'. Alert suppressed.", flush=True)
 
 async def run_scanner():
     """The main function to connect, authenticate, subscribe, and process data."""
