@@ -613,27 +613,18 @@ async def process_data(data):
     except ZeroDivisionError:
         oi_roc = 0.0
 
-    # --- Alert Logic ---
-    if abs(oi_roc) > OI_ROC_THRESHOLD:
-        print(f"🚨 [{now()}] {symbol}: OI RoC {oi_roc:.2f}% > {OI_ROC_THRESHOLD}%. Potential Alert.", flush=True)
+    # --- Standard OI Spike Alert ---
+    lots = lots_from_oi_change(symbol, oi_chg)
+    if lots >= 200:
+        # Calculate moneyness just for the alert message, not for filtering
+        moneyness = get_option_moneyness(symbol, future_price_state)
+        bucket = lot_bucket(lots)
         
-        lots = lots_from_oi_change(symbol, oi_chg)
+        print(f"📊 [{now()}] {symbol}: Spike Detected ({lots} lots). TRIGGERING ALERT.", flush=True)
         
-        alert_condition_met = False
-        moneyness = "N/A" 
-
-        if lots > 100:
-            moneyness = get_option_moneyness(symbol, future_price_state)
-            if moneyness in ["ITM", "ATM"]:
-                alert_condition_met = True
-        
-        if alert_condition_met:
-            bucket = lot_bucket(lots)
-            if bucket != "IGNORE":
-                print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}, Bucket: {bucket}. TRIGGERING ALERT.", flush=True)
-                action = classify_option(oi_chg, price_chg, symbol)
-                alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state)
-                await send_alert(alert_msg)
+        action = classify_option(oi_chg, price_chg, symbol)
+        alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state)
+        await send_alert(alert_msg)
 
     # --- Momentum Alert Logic ---
     # This is called on every tick to check for a developing trend.
