@@ -294,6 +294,137 @@ def get_option_moneyness(symbol, future_price_state):
         print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
         return "OTM"
 
+def calculate_future_price_score(ticks):
+    """Calculates the Future Price Score based on trend direction."""
+    if len(ticks) < 10:  # Need enough data to determine a trend
+        return 0, "Not Enough Data"
+
+    prices = [tick[1] for tick in ticks]
+    start_price = prices[0]
+    end_price = prices[-1]
+    price_change = end_price - start_price
+    
+    # Simple trend detection
+    if price_change > 0:
+        # Simplified: Treat all upward movement as "Price ↑ but choppy" for now
+        return 25, "Price ↑"
+    elif price_change < 0:
+        # Simplified: Treat all downward movement as "Price ↓ but choppy" for now
+        return -25, "Price ↓"
+    else:
+        return 0, "Flat"
+
+def calculate_option_oi_score(symbol_data_state, underlying):
+    """
+    Calculates the Option OI Score based on aggregate call and put activity.
+    """
+    total_ce_oi_chg = 0
+    total_pe_oi_chg = 0
+    ce_price_chg_sum = 0
+    pe_price_chg_sum = 0
+    ce_count = 0
+    pe_count = 0
+
+    for symbol, state in symbol_data_state.items():
+        if underlying not in symbol:
+            continue
+
+        if not state.get('ticks'):
+            continue
+        
+        # Ensure the ticks are within the momentum window
+        now = time.time()
+        relevant_ticks = [t for t in state['ticks'] if now - t[0] <= MOMENTUM_WINDOW]
+        if len(relevant_ticks) < 2:
+            continue
+
+        start_price = relevant_ticks[0][1]
+        start_oi = relevant_ticks[0][2]
+        end_price = relevant_ticks[-1][1]
+        end_oi = relevant_ticks[-1][2]
+        
+        oi_chg = end_oi - start_oi
+        price_chg = end_price - start_price
+
+        if "CE" in symbol:
+            total_ce_oi_chg += oi_chg
+            ce_price_chg_sum += price_chg
+            ce_count += 1
+        elif "PE" in symbol:
+            total_pe_oi_chg += oi_chg
+            pe_price_chg_sum += price_chg
+            pe_count += 1
+    
+    avg_ce_price_chg = ce_price_chg_sum / ce_count if ce_count > 0 else 0
+    avg_pe_price_chg = pe_price_chg_sum / pe_count if pe_count > 0 else 0
+
+    # Scoring logic from score.pdf
+    if total_pe_oi_chg > 0 and avg_pe_price_chg < 0:
+        return 20, "Put Writing"
+    if total_ce_oi_chg > 0 and avg_ce_price_chg < 0:
+        return -20, "Call Writing"
+    if total_ce_oi_chg < 0 and avg_ce_price_chg > 0:
+        return 15, "Call Short Covering"
+    if total_pe_oi_chg < 0 and avg_pe_price_chg > 0:
+        return -15, "Put Short Covering"
+    
+    # Check for both side writing
+    if total_ce_oi_chg > 0 and total_pe_oi_chg > 0:
+        return 0, "Both Side Writing"
+
+    return 0, "Neutral OI Activity"
+
+def calculate_option_price_score(symbol_data_state, underlying):
+    """
+    Calculates the Option Price Score based on how fast prices are moving.
+    """
+    ce_price_chg_pct_sum = 0
+    pe_price_chg_pct_sum = 0
+    ce_count = 0
+    pe_count = 0
+    FAST_THRESHOLD = 0.10  # 10% change is considered "fast"
+
+    for symbol, state in symbol_data_state.items():
+        if underlying not in symbol:
+            continue
+        
+        if not state.get('ticks'):
+            continue
+
+        now = time.time()
+        relevant_ticks = [t for t in state['ticks'] if now - t[0] <= MOMENTUM_WINDOW]
+        if len(relevant_ticks) < 2:
+            continue
+
+        start_price = relevant_ticks[0][1]
+        end_price = relevant_ticks[-1][1]
+
+        if start_price == 0:
+            continue
+
+        price_chg_pct = (end_price - start_price) / start_price
+
+        if "CE" in symbol:
+            ce_price_chg_pct_sum += price_chg_pct
+            ce_count += 1
+        elif "PE" in symbol:
+            pe_price_chg_pct_sum += price_chg_pct
+            pe_count += 1
+            
+    avg_ce_price_chg_pct = ce_price_chg_pct_sum / ce_count if ce_count > 0 else 0
+    avg_pe_price_chg_pct = pe_price_chg_pct_sum / pe_count if pe_count > 0 else 0
+
+    if avg_ce_price_chg_pct > FAST_THRESHOLD:
+        return 15, "CE Price ↑ Fast"
+    if avg_pe_price_chg_pct > FAST_THRESHOLD:
+        return -15, "PE Price ↑ Fast"
+    
+    # Check for premium decay
+    if avg_ce_price_chg_pct < 0 and avg_pe_price_chg_pct < 0:
+        return 0, "Premium Decay"
+
+    return 0, "Neutral Price Activity"
+
 def check_momentum_trends(symbol, state, future_price_state):
     """
     Analyzes 5-minute data based on "logic 2.pdf" cases.
@@ -378,9 +509,34 @@ def check_momentum_trends(symbol, state, future_price_state):
         
     return None
 
-def format_momentum_alert(symbol, trend_name, interpretation, data):
+def get_market_trend_score(underlying, symbol_data_state, future_price_state):
+    """Calculates the total market trend score for a given underlying."""
+    
+    future_ticks = future_price_state.get(underlying, {}).get("ticks", [])
+    
+    future_price_score, future_price_desc = calculate_future_price_score(future_ticks)
+    option_oi_score, option_oi_desc = calculate_option_oi_score(symbol_data_state, underlying)
+    option_price_score, option_price_desc = calculate_option_price_score(symbol_data_state, underlying)
+
+    final_score = future_price_score + option_oi_score + option_price_score
+    
+    score_meaning = "No Trend"
+    if 45 <= final_score <= 75:
+        score_meaning = "Strong Bullish"
+    elif 23 <= final_score <= 44:
+        score_meaning = "Weak Bullish"
+    elif -22 <= final_score <= 22:
+        score_meaning = "No Trend"
+    elif -44 <= final_score <= -23:
+        score_meaning = "Weak Bearish"
+    elif -75 <= final_score <= -45:
+        score_meaning = "Strong Bearish"
+
+    return final_score, score_meaning
+
+def format_momentum_alert(symbol, trend_name, interpretation, data, trend_score_details):
     """
-    Formats the 5-minute momentum alert message based on the new "logic 2.pdf" format.
+    Formats the 3-minute momentum alert message, including the market trend score.
     """
     product_name, strike_display, option_type, year = "UNKNOWN", "N/A", "", ""
     if "HDFCBANK" in symbol: product_name = "HDFCBANK"
@@ -399,15 +555,19 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
     except ZeroDivisionError:
         oi_roc = 0.0
 
+    # --- Unpack Score ---
+    trend_score, trend_meaning = trend_score_details
+
     # --- Movement Indicators ---
     future_dir = "↑" if data['future_price_chg'] > 0 else "↓" if data['future_price_chg'] < 0 else "↔"
     option_dir = "↑" if data['option_price_chg'] > 0 else "↓" if data['option_price_chg'] < 0 else "↔"
     oi_dir = "↑" if data['oi_chg'] > 0 else "↓"
 
     # --- Formatting ---
-    header = "- - - 5-Min Momentum Alert - - -"
+    header = "- - - 3-Min Momentum Alert - - -"
     line1 = f"{product_name} | {strike_display}{option_type}"
     line2 = f"\n{trend_name}\nInterpretation: {interpretation}\n"
+    score_line = f"Market Trend Score: {trend_score} ({trend_meaning})"
     
     analysis_header = "--- Analysis Breakdown ---"
     future_line = f"Future Price:   {future_dir} ({data['future_price_chg']:+.2f})"
@@ -429,7 +589,7 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
     footer = "- - - - - - - - - - - - - - - -"
 
     return "\n".join([
-        header, line1, line2, analysis_header, future_line, option_line, oi_line,
+        header, line1, line2, score_line, analysis_header, future_line, option_line, oi_line,
         data_header, oi_delta_line, oi_roc_line, last_option_price_line,
         last_future_price_line, duration_line, footer
     ])
@@ -604,12 +764,19 @@ async def process_data(data):
         last_alert_time = state.get("last_trend_alert_time", 0)
         last_alert_type = state.get("last_trend_alert_type", None)
         
-        # Only alert if the trend type is new or if it's been more than 5 mins since the last alert of the same type
+        # Only alert if the trend type is new or if it's been more than 3 mins since the last alert of the same type
         if trend_name != last_alert_type or (current_time - last_alert_time) > MOMENTUM_WINDOW:
             print(f"📈 [{now()}] {symbol}: Momentum Trend Detected - {trend_name}. TRIGGERING ALERT.", flush=True)
             
+            # --- Calculate Market Trend Score ---
+            underlying = next((name for name in future_price_state if name in symbol), None)
+            if underlying:
+                trend_score_details = get_market_trend_score(underlying, symbol_data_state, future_price_state)
+            else:
+                trend_score_details = (0, "Unknown")
+
             # Format the specific momentum alert message
-            alert_msg = format_momentum_alert(symbol, trend_name, interpretation, trend_data)
+            alert_msg = format_momentum_alert(symbol, trend_name, interpretation, trend_data, trend_score_details)
             await send_alert(alert_msg)
             
             # Update state to prevent re-alerting immediately
