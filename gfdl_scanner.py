@@ -42,98 +42,102 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
-    "BANKNIFTY24FEB2659600CE",
-    "BANKNIFTY24FEB2659600PE",
-    "BANKNIFTY24FEB2659500CE",
-    "BANKNIFTY24FEB2659500PE",
-    "BANKNIFTY24FEB2659400CE",
-    "BANKNIFTY24FEB2659400PE",
-    "BANKNIFTY24FEB2659300CE",
-    "BANKNIFTY24FEB2659300PE",
-    "BANKNIFTY24FEB2659200CE",
-    "BANKNIFTY24FEB2659200PE",
-    "BANKNIFTY24FEB2659100CE",
-    "BANKNIFTY24FEB2659100PE",
-    "BANKNIFTY24FEB2659700CE",
-    "BANKNIFTY24FEB2659700PE",
-    "BANKNIFTY24FEB2659800CE",
-    "BANKNIFTY24FEB2659800PE",
-    "BANKNIFTY24FEB2659900CE",
-    "BANKNIFTY24FEB2659900PE",
-    "BANKNIFTY24FEB2660000CE",
-    "BANKNIFTY24FEB2660000PE",
-    "BANKNIFTY24FEB2660100CE",
-    "BANKNIFTY24FEB2660100PE",
-    "HDFCBANK24FEB26930CE",
-    "HDFCBANK24FEB26930PE",
-    "HDFCBANK24FEB26925CE",
-    "HDFCBANK24FEB26925PE",
-    "HDFCBANK24FEB26920CE",
-    "HDFCBANK24FEB26920PE",
-    "HDFCBANK24FEB26915CE",
-    "HDFCBANK24FEB26915PE",
-    "HDFCBANK24FEB26910CE",
-    "HDFCBANK24FEB26910PE",
-    "HDFCBANK24FEB26905CE",
-    "HDFCBANK24FEB26905PE",
-    "HDFCBANK24FEB26935CE",
-    "HDFCBANK24FEB26935PE",
-    "HDFCBANK24FEB26940CE",
-    "HDFCBANK24FEB26940PE",
-    "HDFCBANK24FEB26945CE",
-    "HDFCBANK24FEB26945PE",
-    "HDFCBANK24FEB26950CE",
-    "HDFCBANK24FEB26950PE",
-    "HDFCBANK24FEB26955CE",
-    "HDFCBANK24FEB26955PE",
-    "SBIN24FEB261065CE",
-    "SBIN24FEB261065PE",
-    "SBIN24FEB261060CE",
-    "SBIN24FEB261060PE",
-    "SBIN24FEB261055CE",
-    "SBIN24FEB261055PE",
-    "SBIN24FEB261050CE",
-    "SBIN24FEB261050PE",
-    "SBIN24FEB261045CE",
-    "SBIN24FEB261045PE",
-    "SBIN24FEB261040CE",
-    "SBIN24FEB261040PE",
-    "SBIN24FEB261070CE",
-    "SBIN24FEB261070PE",
-    "SBIN24FEB261075CE",
-    "SBIN24FEB261075PE",
-    "SBIN24FEB261080CE",
-    "SBIN24FEB261080PE",
-    "SBIN24FEB261085CE",
-    "SBIN24FEB261085PE",
-    "SBIN24FEB261090CE",
-    "SBIN24FEB261090PE",
-    "ICICIBANK24FEB261370CE",
-    "ICICIBANK24FEB261370PE",
-    "ICICIBANK24FEB261360CE",
-    "ICICIBANK24FEB261360PE",
-    "ICICIBANK24FEB261350CE",
-    "ICICIBANK24FEB261350PE",
-    "ICICIBANK24FEB261340CE",
-    "ICICIBANK24FEB261340PE",
-    "ICICIBANK24FEB261330CE",
-    "ICICIBANK24FEB261330PE",
-    "ICICIBANK24FEB261320CE",
-    "ICICIBANK24FEB261320PE",
-    "ICICIBANK24FEB261380CE",
-    "ICICIBANK24FEB261380PE",
-    "ICICIBANK24FEB261390CE",
-    "ICICIBANK24FEB261390PE",
-    "ICICIBANK24FEB261400CE",
-    "ICICIBANK24FEB261400PE",
-    "ICICIBANK24FEB261410CE",
-    "ICICIBANK24FEB261410PE",
-    "ICICIBANK24FEB261420CE",
-    "ICICIBANK24FEB261420PE",
+    "BANKNIFTY24FEB2660200CE.NFO",
+    "BANKNIFTY24FEB2660200PE.NFO",
+    "BANKNIFTY24FEB2660100CE.NFO",
+    "BANKNIFTY24FEB2660100PE.NFO",
+    "BANKNIFTY24FEB2660000CE.NFO",
+    "BANKNIFTY24FEB2660000PE.NFO",
+    "BANKNIFTY24FEB2659900CE.NFO",
+    "BANKNIFTY24FEB2659900PE.NFO",
+    "BANKNIFTY24FEB2659800CE.NFO",
+    "BANKNIFTY24FEB2659800PE.NFO",
+    "BANKNIFTY24FEB2659700CE.NFO",
+    "BANKNIFTY24FEB2659700PE.NFO",
+    "BANKNIFTY24FEB2660300CE.NFO",
+    "BANKNIFTY24FEB2660300PE.NFO",
+    "BANKNIFTY24FEB2660400CE.NFO",
+    "BANKNIFTY24FEB2660400PE.NFO",
+    "BANKNIFTY24FEB2660500CE.NFO",
+    "BANKNIFTY24FEB2660500PE.NFO",
+    "BANKNIFTY24FEB2660600CE.NFO",
+    "BANKNIFTY24FEB2660600PE.NFO",
+    "BANKNIFTY24FEB2660700CE.NFO",
+    "BANKNIFTY24FEB2660700PE.NFO",
+    "HDFCBANK24FEB26935CE.NFO",
+    "HDFCBANK24FEB26935PE.NFO",
+    "HDFCBANK24FEB26930CE.NFO",
+    "HDFCBANK24FEB26930PE.NFO",
+    "HDFCBANK24FEB26925CE.NFO",
+    "HDFCBANK24FEB26925PE.NFO",
+    "HDFCBANK24FEB26920CE.NFO",
+    "HDFCBANK24FEB26920PE.NFO",
+    "HDFCBANK24FEB26915CE.NFO",
+    "HDFCBANK24FEB26915PE.NFO",
+    "HDFCBANK24FEB26910CE.NFO",
+    "HDFCBANK24FEB26910PE.NFO",
+    "HDFCBANK24FEB26940CE.NFO",
+    "HDFCBANK24FEB26940PE.NFO",
+    "HDFCBANK24FEB26945CE.NFO",
+    "HDFCBANK24FEB26945PE.NFO",
+    "HDFCBANK24FEB26950CE.NFO",
+    "HDFCBANK24FEB26950PE.NFO",
+    "HDFCBANK24FEB26955CE.NFO",
+    "HDFCBANK24FEB26955PE.NFO",
+    "HDFCBANK24FEB26960CE.NFO",
+    "HDFCBANK24FEB26960PE.NFO",
+    "SBIN24FEB261065CE.NFO",
+    "SBIN24FEB261065PE.NFO",
+    "SBIN24FEB261060CE.NFO",
+    "SBIN24FEB261060PE.NFO",
+    "SBIN24FEB261055CE.NFO",
+    "SBIN24FEB261055PE.NFO",
+    "SBIN24FEB261050CE.NFO",
+    "SBIN24FEB261050PE.NFO",
+    "SBIN24FEB261045CE.NFO",
+    "SBIN24FEB261045PE.NFO",
+    "SBIN24FEB261040CE.NFO",
+    "SBIN24FEB261040PE.NFO",
+    "SBIN24FEB261070CE.NFO",
+    "SBIN24FEB261070PE.NFO",
+    "SBIN24FEB261075CE.NFO",
+    "SBIN24FEB261075PE.NFO",
+    "SBIN24FEB261080CE.NFO",
+    "SBIN24FEB261080PE.NFO",
+    "SBIN24FEB261085CE.NFO",
+    "SBIN24FEB261085PE.NFO",
+    "SBIN24FEB261090CE.NFO",
+    "SBIN24FEB261090PE.NFO",
+    "ICICIBANK24FEB261380CE.NFO",
+    "ICICIBANK24FEB261380PE.NFO",
+    "ICICIBANK24FEB261370CE.NFO",
+    "ICICIBANK24FEB261370PE.NFO",
+    "ICICIBANK24FEB261360CE.NFO",
+    "ICICIBANK24FEB261360PE.NFO",
+    "ICICIBANK24FEB261350CE.NFO",
+    "ICICIBANK24FEB261350PE.NFO",
+    "ICICIBANK24FEB261340CE.NFO",
+    "ICICIBANK24FEB261340PE.NFO",
+    "ICICIBANK24FEB261330CE.NFO",
+    "ICICIBANK24FEB261330PE.NFO",
+    "ICICIBANK24FEB261390CE.NFO",
+    "ICICIBANK24FEB261390PE.NFO",
+    "ICICIBANK24FEB261400CE.NFO",
+    "ICICIBANK24FEB261400PE.NFO",
+    "ICICIBANK24FEB261410CE.NFO",
+    "ICICIBANK24FEB261410PE.NFO",
+    "ICICIBANK24FEB261420CE.NFO",
+    "ICICIBANK24FEB261420PE.NFO",
+    "ICICIBANK24FEB261430CE.NFO",
+    "ICICIBANK24FEB261430PE.NFO",
     "SBIN24FEB26FUT",
     "HDFCBANK24FEB26FUT",
     "ICICIBANK24FEB26FUT",
     "BANKNIFTY24FEB26FUT",
+    "NIFTY BANK.NSE_IDX",
+    "HDFCBANK.NSE",
+    "SBIN.NSE",
+    "ICICIBANK.NSE",
 ]
 
 # --- Logic & Thresholds ---
@@ -170,6 +174,21 @@ future_price_state = {
     "HDFCBANK": {"ticks": []},
     "ICICIBANK": {"ticks": []},
     "SBIN": {"ticks": []},
+}
+
+# Dictionary to hold the latest price of the underlying spot instruments
+spot_price_state = {
+    "BANKNIFTY": 0,
+    "HDFCBANK": 0,
+    "ICICIBANK": 0,
+    "SBIN": 0,
+}
+
+SPOT_SYMBOL_MAPPING = {
+    "NIFTY BANK.NSE_IDX": "BANKNIFTY",
+    "HDFCBANK.NSE": "HDFCBANK",
+    "ICICIBANK.NSE": "ICICIBANK",
+    "SBIN.NSE": "SBIN",
 }
 
 def now():
@@ -241,58 +260,49 @@ def classify_option(oi_change, price_change, symbol):
     
     return "Indecisive Movement"
 
-def get_option_moneyness(symbol, future_price_state):
+def get_option_moneyness(symbol, spot_price_state):
     """
-    Checks if an option is ITM, ATM, or OTM based on the latest future price.
-    Returns a string: "ITM", "ATM", or "OTM".
+    Checks if an option is ITM, ATM, or OTM based on the latest spot price.
+    Returns a string: "ITM", "ATM", "OTM", or "".
     """
-    # This filter does not apply to future contracts themselves
     if "FUT" in symbol:
-        return "N/A"
+        return ""
 
-    # Identify underlying and get its future price
     underlying = None
     if "HDFCBANK" in symbol: underlying = "HDFCBANK"
     elif "ICICIBANK" in symbol: underlying = "ICICIBANK"
     elif "SBIN" in symbol: underlying = "SBIN"
     elif "BANKNIFTY" in symbol: underlying = "BANKNIFTY"
 
-    if not underlying: 
-        return "N/A" # If it's not one of our known underlyings, don't block it
+    if not underlying:
+        return ""
 
-    future_price = future_price_state.get(underlying)
-    if not future_price or future_price == 0:
-        print(f"⏳ [{now()}] {symbol}: Waiting for future price of {underlying} to check moneyness.", flush=True)
-        return "OTM" # Treat as OTM if we don't have the future price yet
+    spot_price = spot_price_state.get(underlying)
+    if not spot_price or spot_price == 0:
+        print(f"⏳ [{now()}] {symbol}: Waiting for spot price of {underlying} to check moneyness.", flush=True)
+        return ""
 
-    # Extract strike and type
     try:
-        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
-        strike_price = int(match.group(2))
-        option_type = match.group(3)
+        # Extract strike from symbols like 'BANKNIFTY24FEB2660000CE.NFO'
+        match = re.search(r'(\d+)(CE|PE)\.NFO$', symbol)
+        if not match: # Fallback for symbols without .NFO
+             match = re.search(r'(\d+)(CE|PE)$', symbol)
+        
+        strike_price = int(match.group(1))
+        option_type = match.group(2)
     except (AttributeError, TypeError, ValueError):
-        return "N/A" # If we can't parse the option, don't block it
+        return ""
 
-    # Define ATM band (0.5% of future price)
-    atm_band = future_price * 0.001
+    # Define ATM band (0.1% of spot price)
+    atm_band = spot_price * 0.001
     
-    # Check ATM first
-    if abs(future_price - strike_price) <= atm_band:
+    if abs(spot_price - strike_price) <= atm_band:
         return "ATM"
     
-    # Check ITM
-    is_itm = False
-    if option_type == 'CE' and strike_price < future_price:
-        is_itm = True
-    if option_type == 'PE' and strike_price > future_price:
-        is_itm = True
+    is_itm = (option_type == 'CE' and strike_price < spot_price) or \
+             (option_type == 'PE' and strike_price > spot_price)
 
-    if is_itm:
-        return "ITM"
-    else:
-        # If not ATM and not ITM, it must be OTM
-        print(f"ℹ️ [{now()}] {symbol}: OTM (Future: {future_price:.2f}, Strike: {strike_price}), alert suppressed.", flush=True)
-        return "OTM"
+    return "ITM" if is_itm else "OTM"
 
 def check_momentum_trends(symbol, state, future_price_state):
     """
@@ -324,9 +334,9 @@ def check_momentum_trends(symbol, state, future_price_state):
     option_price_chg = end_option_price - start_option_price
     oi_chg = end_oi - start_oi
 
-    try:
-        if abs((oi_chg / start_oi) * 100) <= 2.0: return None
-    except ZeroDivisionError:
+    # Check if lot size from OI change is >= 100
+    lots = lots_from_oi_change(symbol, oi_chg)
+    if lots < 100:
         return None
 
     is_call = "CE" in symbol
@@ -346,7 +356,7 @@ def check_momentum_trends(symbol, state, future_price_state):
         trend_name = "📈 Case-1: Strong Bullish (Smart money)"
         interpretation = "Call writing + Future moving up -> Resistance absorbed -> slow trending up"
     elif is_call and future_up and price_up and oi_down:
-        trend_name = "📈 Case-2: Breakout Bullish"
+        trend_name = "🟢📈 Case-2: Breakout Bullish" # Added green circle
         interpretation = "Call writers trapped -> Fast upside move"
     elif is_put and future_up and price_down and oi_up:
         trend_name = "📈 Case-3: Support-based Bullish"
@@ -357,7 +367,7 @@ def check_momentum_trends(symbol, state, future_price_state):
         trend_name = "📉 Case-4: Strong Bearish (Smart money)"
         interpretation = "Put writing + downside control -> Slow grind down"
     elif is_put and future_down and price_up and oi_down:
-        trend_name = "📉 Case-5: Breakdown Bearish"
+        trend_name = "🔴📉 Case-5: Breakdown Bearish" # Added red circle
         interpretation = "Put writers trapped -> Fast fall"
     elif is_call and future_down and price_down and oi_up:
         trend_name = "📉 Case-6: Resistance-based Bearish"
@@ -382,7 +392,7 @@ def check_momentum_trends(symbol, state, future_price_state):
         
     return None
 
-def format_momentum_alert(symbol, trend_name, interpretation, data):
+def format_momentum_alert(symbol, trend_name, interpretation, data, spot_price_state):
     """
     Formats the 5-minute momentum alert message based on the new "logic 2.pdf" format.
     """
@@ -393,8 +403,10 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
     elif "BANKNIFTY" in symbol: product_name = "BANKNIFTY"
     
     try:
-        match = re.search(r'.*?(\d{2})(\d+)(CE|PE)$', symbol)
-        if match: year, strike_display, option_type = match.groups()
+        match = re.search(r'(\d+)(CE|PE)\.NFO$', symbol)
+        if not match:
+            match = re.search(r'(\d+)(CE|PE)$', symbol)
+        strike_display, option_type = match.group(1), match.group(2)
     except Exception: pass
 
     lots = lots_from_oi_change(symbol, data['oi_chg'])
@@ -402,6 +414,8 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
         oi_roc = (data['oi_chg'] / data['start_oi']) * 100
     except ZeroDivisionError:
         oi_roc = 0.0
+    
+    moneyness = get_option_moneyness(symbol, spot_price_state)
 
     # --- Movement Indicators ---
     future_dir = "↑" if data['future_price_chg'] > 0 else "↓" if data['future_price_chg'] < 0 else "↔"
@@ -410,7 +424,7 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
 
     # --- Formatting ---
     header = "- - - 5-Min Momentum Alert - - -"
-    line1 = f"{product_name} | {strike_display}{option_type}"
+    line1 = f"{product_name} | {strike_display}{option_type} ({moneyness})" if moneyness else f"{product_name} | {strike_display}{option_type}"
     line2 = f"\n{trend_name}\nInterpretation: {interpretation}\n"
     
     analysis_header = "--- Analysis Breakdown ---"
@@ -419,23 +433,28 @@ def format_momentum_alert(symbol, trend_name, interpretation, data):
     oi_line =     f"Option OI:      {oi_dir} ({data['oi_chg']:+,.0f})"
     
     data_header = "\n--- Data Points ---"
+    existing_oi_line = f"Existing OI: {data['start_oi']:,.0f}"
     oi_delta_line = f"OI Δ: {data['oi_chg']:+,.0f} ({lots} lots)"
     oi_roc_line = f"OI RoC: {oi_roc:+.2f}%"
     last_option_price_line = f"Last Option Price: {data['end_option_price']:.2f}"
     last_future_price_line = f"Last Future Price: {data['end_future_price']:.2f}"
     
+    underlying_key = "ICICIBANK" if product_name == "ICICI" else product_name
+    spot_price = spot_price_state.get(underlying_key, 0)
+    spot_price_line = f"Spot Price: {spot_price:.2f}"
+
     duration_minutes = int(data['duration'] // 60)
     duration_seconds = int(data['duration'] % 60)
-    start_time_str = datetime.fromtimestamp(data['start_time']).strftime('%H:%M')
-    end_time_str = datetime.fromtimestamp(data['end_time']).strftime('%H:%M')
+    start_time_str = datetime.fromtimestamp(data['start_time'], ZoneInfo("Asia/Kolkata")).strftime('%H:%M')
+    end_time_str = datetime.fromtimestamp(data['end_time'], ZoneInfo("Asia/Kolkata")).strftime('%H:%M')
     duration_line = f"Duration: {duration_minutes}m {duration_seconds}s ({start_time_str} -> {end_time_str})"
     
     footer = "- - - - - - - - - - - - - - - -"
 
     return "\n".join([
         header, line1, line2, analysis_header, future_line, option_line, oi_line,
-        data_header, oi_delta_line, oi_roc_line, last_option_price_line,
-        last_future_price_line, duration_line, footer
+        data_header, existing_oi_line, oi_delta_line, oi_roc_line, last_option_price_line,
+        last_future_price_line, spot_price_line, duration_line, footer
     ])
 
 
@@ -527,29 +546,35 @@ async def process_data(data):
     Processes a single data packet, updating future prices or sending option alerts.
     Option alerts are filtered to only include ITM/ATM strikes.
     """
-    global symbol_data_state, future_price_state
+    global symbol_data_state, future_price_state, spot_price_state
     
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state:
         return
 
     new_price = data.get("LastTradePrice")
-    if new_price is None:
+    if new_price is None or new_price <= 0:
         return
 
-    # If the symbol is a future, update its price history and stop processing for alerts
+    # --- Handle different instrument types ---
+
+    # If the symbol is a spot instrument, update its price and stop
+    if symbol in SPOT_SYMBOL_MAPPING:
+        underlying = SPOT_SYMBOL_MAPPING[symbol]
+        spot_price_state[underlying] = new_price
+        return
+
+    # If the symbol is a future, update its price history and stop
     if "FUT" in symbol:
         underlying = next((name for name in future_price_state if name in symbol), None)
-        
-        if underlying and new_price > 0: # Ensure price is valid
+        if underlying:
             current_time = time.time()
             future_state = future_price_state[underlying]
             future_state["ticks"].append((current_time, new_price))
-            # Prune old data points
             future_state["ticks"] = [tick for tick in future_state["ticks"] if current_time - tick[0] <= MOMENTUM_WINDOW]
-        return # Stop processing here for futures
+        return
 
-    # The rest of the function will only execute for OPTIONS
+    # --- The rest of the function will only execute for OPTIONS ---
     state = symbol_data_state[symbol]
     new_oi = data.get("OpenInterest")
 
@@ -558,14 +583,11 @@ async def process_data(data):
 
     # --- History Management for Momentum Alerts ---
     current_time = time.time()
-    # Add the new data point to the history if it's valid
-    if new_price > 0 and new_oi > 0:
+    if new_oi > 0: # Only store ticks with valid OI
         state["ticks"].append((current_time, new_price, new_oi))
-    # Prune old data points from the history
     state["ticks"] = [tick for tick in state["ticks"] if current_time - tick[0] <= MOMENTUM_WINDOW]
 
     # --- Standard processing for Option contracts ---
-
     state["price_prev"], state["oi_prev"] = state["price"], state["oi"]
     state["price"], state["oi"] = new_price, new_oi
 
@@ -577,29 +599,7 @@ async def process_data(data):
     if oi_chg == 0:
         return
 
-    # --- Calculations ---
-    price_chg = state["price"] - state["price_prev"]
-    
-    try:
-        oi_roc = (oi_chg / state["oi_prev"]) * 100
-    except ZeroDivisionError:
-        oi_roc = 0.0
-
-    # --- Standard OI Spike Alert ---
-    lots = lots_from_oi_change(symbol, oi_chg)
-    if lots >= 100:
-        # Calculate moneyness just for the alert message, not for filtering
-        moneyness = get_option_moneyness(symbol, future_price_state)
-        bucket = lot_bucket(lots)
-        
-        print(f"📊 [{now()}] {symbol}: Spike Detected ({lots} lots). TRIGGERING ALERT.", flush=True)
-        
-        action = classify_option(oi_chg, price_chg, symbol)
-        alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_price_state)
-        await send_alert(alert_msg)
-
     # --- Momentum Alert Logic ---
-    # This is called on every tick to check for a developing trend.
     analysis_result = check_momentum_trends(symbol, state, future_price_state)
     if analysis_result:
         trend_name, interpretation, trend_data = analysis_result
@@ -612,8 +612,8 @@ async def process_data(data):
         if trend_name != last_alert_type or (current_time - last_alert_time) > MOMENTUM_WINDOW:
             print(f"📈 [{now()}] {symbol}: Momentum Trend Detected - {trend_name}. TRIGGERING ALERT.", flush=True)
             
-            # Format the specific momentum alert message
-            alert_msg = format_momentum_alert(symbol, trend_name, interpretation, trend_data)
+            # Format the specific momentum alert message, now passing spot_price_state
+            alert_msg = format_momentum_alert(symbol, trend_name, interpretation, trend_data, spot_price_state)
             await send_alert(alert_msg)
             
             # Update state to prevent re-alerting immediately
