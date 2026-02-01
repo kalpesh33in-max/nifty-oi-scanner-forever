@@ -1,301 +1,38 @@
-import asyncio
-import websockets
-import json
-import time
-import requests
-import functools
-import os
-import sys
-from datetime import datetime # ADDED BACK
-import ssl
-from zoneinfo import ZoneInfo
-
-# ==============================================================================
-# ============================== CONFIGURATION =================================
-# ==============================================================================
-
-# --- Environment Variable Loading ---
-API_KEY = os.environ.get("API_KEY")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-
-# --- Validation ---
-required_vars = {
-    "API_KEY": API_KEY,
-    "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
-    "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
-}
-missing_vars = [key for key, value in required_vars.items() if value is None]
-if missing_vars:
-    print(f"❌ Critical Error: Missing required environment variables: {', '.join(missing_vars)}", flush=True)
-    print("Please set these variables in your deployment environment and restart the application.", flush=True)
-    sys.exit(1)
-
-# --- API and Connection ---
-WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-# --- Symbol List (Options & Futures) ---
-SYMBOLS_TO_MONITOR = [
-    "BANKNIFTY24FEB2658900CE.NFO",
-    "BANKNIFTY24FEB2658900PE.NFO",
-    "BANKNIFTY24FEB2658800CE.NFO",
-    "BANKNIFTY24FEB2658800PE.NFO",
-    "BANKNIFTY24FEB2658700CE.NFO",
-    "BANKNIFTY24FEB2658700PE.NFO",
-    "BANKNIFTY24FEB2658600CE.NFO",
-    "BANKNIFTY24FEB2658600PE.NFO",
-    "BANKNIFTY24FEB2658500CE.NFO",
-    "BANKNIFTY24FEB2658500PE.NFO",
-    "BANKNIFTY24FEB2658400CE.NFO",
-    "BANKNIFTY24FEB2658400PE.NFO",
-    "BANKNIFTY24FEB2659000CE.NFO",
-    "BANKNIFTY24FEB2659000PE.NFO",
-    "BANKNIFTY24FEB2659100CE.NFO",
-    "BANKNIFTY24FEB2659100PE.NFO",
-    "BANKNIFTY24FEB2659200CE.NFO",
-    "BANKNIFTY24FEB2659200PE.NFO",
-    "BANKNIFTY24FEB2659300CE.NFO",
-    "BANKNIFTY24FEB2659300PE.NFO",
-    "BANKNIFTY24FEB2659400CE.NFO",
-    "BANKNIFTY24FEB2659400PE.NFO",
-    "HDFCBANK24FEB26930CE.NFO",
-    "HDFCBANK24FEB26930PE.NFO",
-    "HDFCBANK24FEB26925CE.NFO",
-    "HDFCBANK24FEB26925PE.NFO",
-    "HDFCBANK24FEB26920CE.NFO",
-    "HDFCBANK24FEB26920PE.NFO",
-    "HDFCBANK24FEB26915CE.NFO",
-    "HDFCBANK24FEB26915PE.NFO",
-    "HDFCBANK24FEB26910CE.NFO",
-    "HDFCBANK24FEB26910PE.NFO",
-    "HDFCBANK24FEB26905CE.NFO",
-    "HDFCBANK24FEB26905PE.NFO",
-    "HDFCBANK24FEB26935CE.NFO",
-    "HDFCBANK24FEB26935PE.NFO",
-    "HDFCBANK24FEB26940CE.NFO",
-    "HDFCBANK24FEB26940PE.NFO",
-    "HDFCBANK24FEB26945CE.NFO",
-    "HDFCBANK24FEB26945PE.NFO",
-    "HDFCBANK24FEB26950CE.NFO",
-    "HDFCBANK24FEB26950PE.NFO",
-    "HDFCBANK24FEB26955CE.NFO",
-    "HDFCBANK24FEB26955PE.NFO",
-    "SBIN24FEB261040CE.NFO",
-    "SBIN24FEB261040PE.NFO",
-    "SBIN24FEB261035CE.NFO",
-    "SBIN24FEB261035PE.NFO",
-    "SBIN24FEB261030CE.NFO",
-    "SBIN24FEB261030PE.NFO",
-    "SBIN24FEB261025CE.NFO",
-    "SBIN24FEB261025PE.NFO",
-    "SBIN24FEB261020CE.NFO",
-    "SBIN24FEB261020PE.NFO",
-    "SBIN24FEB261015CE.NFO",
-    "SBIN24FEB261015PE.NFO",
-    "SBIN24FEB261045CE.NFO",
-    "SBIN24FEB261045PE.NFO",
-    "SBIN24FEB261050CE.NFO",
-    "SBIN24FEB261050PE.NFO",
-    "SBIN24FEB261055CE.NFO",
-    "SBIN24FEB261055PE.NFO",
-    "SBIN24FEB261060CE.NFO",
-    "SBIN24FEB261060PE.NFO",
-    "SBIN24FEB261065CE.NFO",
-    "SBIN24FEB261065PE.NFO",
-    "ICICIBANK24FEB261350CE.NFO",
-    "ICICIBANK24FEB261350PE.NFO",
-    "ICICIBANK24FEB261340CE.NFO",
-    "ICICIBANK24FEB261340PE.NFO",
-    "ICICIBANK24FEB261330CE.NFO",
-    "ICICIBANK24FEB261330PE.NFO",
-    "ICICIBANK24FEB261320CE.NFO",
-    "ICICIBANK24FEB261320PE.NFO",
-    "ICICIBANK24FEB261310CE.NFO",
-    "ICICIBANK24FEB261310PE.NFO",
-    "ICICIBANK24FEB261300CE.NFO",
-    "ICICIBANK24FEB261300PE.NFO",
-    "ICICIBANK24FEB261360CE.NFO",
-    "ICICIBANK24FEB261360PE.NFO",
-    "ICICIBANK24FEB261370CE.NFO",
-    "ICICIBANK24FEB261370PE.NFO",
-    "ICICIBANK24FEB261380CE.NFO",
-    "ICICIBANK24FEB261380PE.NFO",
-    "ICICIBANK24FEB261390CE.NFO",
-    "ICICIBANK24FEB261390PE.NFO",
-    "ICICIBANK24FEB261400CE.NFO",
-    "ICICIBANK24FEB261400PE.NFO",
-    "ICICIBANK27JAN261430CE.NFO",
-    "ICICIBANK27JAN261430PE.NFO",
-    "BANKNIFTY-I",
-    "HDFCBANK-I",
-    "ICICIBANK-I",
-    "SBIN-I",
-    "AXISBANK-I",
-    "KOTAKBANK-I"
-]
-
-# --- Logic & Thresholds ---
-LOT_SIZES = {"AXISBANK": 625, "KOTAKBANK": 2000, "SBIN": 750, "ICICIBANK": 700,"HDFCBANK": 550, "BANKNIFTY": 30}
-DEFAULT_LOT_SIZE = 75 # For any other symbol
-OI_ROC_THRESHOLD = 2.0 # Temporarily lowered for IV testing
-
-# ==============================================================================
-# =============================== STATE & UTILITIES ============================
-# ==============================================================================
-
-symbol_data_state = {
-    symbol: {
-        "price": 0, "price_prev": 0,
-        "oi": 0, "oi_prev": 0,
-    } for symbol in SYMBOLS_TO_MONITOR
-}
-
-future_prices = {
-    "BANKNIFTY": 0,
-    "HDFCBANK": 0,
-    "ICICIBANK": 0,
-    "SBIN": 0,
-    "AXISBANK": 0,
-    "KOTAKBANK": 0
-}
-
-def now():
-    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
-
-async def send_alert(msg: str):
-    loop = asyncio.get_running_loop()
-    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg, 'parse_mode': 'Markdown'}
-    try:
-        await loop.run_in_executor(None, functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10))
-    except Exception as e:
-        print(f"⚠️ Telegram Log: {e}", flush=True)
-
-# ==============================================================================
-# =============================== CORE LOGIC ===================================
-# ==============================================================================
-
-def lots_from_oi_change(symbol, oi_change):
-    lot_size = DEFAULT_LOT_SIZE
-    base_symbol = symbol.split("-")[0].upper()
-
-    lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
-    if lot_size == 0: return 0
-    return int(abs(oi_chg) / lot_size)
-
-def lot_bucket(lots):
-    if lots >= 200: return "EXTREME HIGH"
-    if lots >= 150: return "EXTRA HIGH"
-    if lots >= 100: return "HIGH"
-    if lots >= 75: return "MEDIUM"
-    if lots >= 1: return "LOW"
-    return "IGNORE"
-
-def classify_option(oi_change, price_change, symbol):
-    if price_change == 0:
-        if oi_change > 0: return "HEDGING"
-        elif oi_change < 0: return "REMOVE FROM HEDGE"
-    elif oi_change > 0:
-        return "BUYER(LONG)" if price_change > 0 else "WRITER(SHORT)"
-    elif oi_change < 0:
-        return "REMOVE FROM SHORT" if price_change > 0 else "REMOVE FROM LONG"
-    return "Indecisive Movement"
-
-def get_option_moneyness(symbol, future_prices):
-    underlying = next((key for key in future_prices if key in symbol), None)
-    if not underlying: return "N/A"
-    
-    future_price = future_prices.get(underlying, 0)
-    if future_price == 0: return "OTM"
-
-    try:
-        match = re.search(r'(\d+)(CE|PE)$', symbol)
-        strike_price = int(match.group(1))
-        option_type = match.group(2)
-    except (AttributeError, TypeError, ValueError):
-        return "N/A"
-
-    atm_band = future_price * 0.001
-    if abs(future_price - strike_price) <= atm_band: return "ATM"
-    
-    is_itm = (option_type == 'CE' and strike_price < future_price) or \
-             (option_type == 'PE' and strike_price > future_price)
-    return "ITM" if is_itm else "OTM"
-
-def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices, price_chg, price_chg_percent):
-    """Formats the alert message for options."""
-    price_dir = "↑" if price_chg > 0 else "↓" if price_chg < 0 else "↔"
-    
-    # Determine product name for future price lookup
-    product_name = "UNKNOWN"
-    if "HDFCBANK" in symbol: product_name = "HDFCBANK"
-    elif "ICICIBANK" in symbol: product_name = "ICICIBANK"
-    elif "SBIN" in symbol: product_name = "SBIN"
-    elif "BANKNIFTY" in symbol: product_name = "BANKNIFTY"
-    elif "AXISBANK" in symbol: product_name = "AXISBANK"
-    elif "KOTAKBANK" in symbol: product_name = "KOTAKBANK"
-
-    strike_display, option_type_display = "", ""
-    try:
-        # Simplified regex for option symbols
-        match = re.search(r'(\d+)(CE|PE)$', symbol)
-        strike_display, option_type_display = match.groups()
-    except Exception:
-        pass
-
-    future_price = future_prices.get(product_name, 0)
-    
-    return (f"{product_name} | OPTION\n"
-            f"STRIKE: {strike_display}{option_type_display} {moneyness}\n"
-            f"ACTION: {action}\n"
-            f"SIZE: {bucket} ({lots} lots)\n"
-            f"EXISTING OI: {state['oi_prev']}\n"
-            f"OI Δ: {oi_chg}\n"
-            f"OI RoC: {oi_roc:.2f}%\n"
-            f"PRICE: {price_dir}\n"
-            f"PRICE Chg: {price_chg:+.2f} ({price_chg_percent:+.2f}%)\n"
-            f"TIME: {now()}\n"
-            f"{symbol}\n"
-            f"FUTURE PRICE: {future_price:.2f}\n"
-            f"LAST PRICE: {state['price']:.2f}")
-
-# ==============================================================================
-# ============================ MAIN SCANNER & WEBSOCKET ========================
-# ==============================================================================
 
 async def process_data(data):
     print(data)
     global symbol_data_state, future_prices
     
     symbol = data.get("InstrumentIdentifier")
-    if not symbol or symbol not in symbol_data_state: return
+    if not symbol or symbol not in symbol_data_state:
+        return
 
-    is_simple_future = symbol.endswith("-I")
     new_price = data.get("LastTradePrice")
     new_oi = data.get("OpenInterest")
 
-    if new_price is None or new_oi is None: return
+    if new_price is None or new_oi is None:
+        return
 
     state = symbol_data_state[symbol]
+    is_simple_future = symbol.endswith("-I")
 
+    # --- ROUTE 1: Logic for simple "-I" futures ---
     if is_simple_future:
         base_symbol = symbol.split("-")[0].upper()
         if new_price > 0: future_prices[base_symbol] = new_price
         
-        # Always get the previous state before calculations
         prev_oi = state.get("oi", 0)
         prev_price = state.get("price", 0)
 
-        # Update state for the next tick immediately
         state["price"], state["oi"] = new_price, new_oi
 
         if prev_oi == 0:
             print(f"🟢 [{now()}] {symbol}: First Data (P: {new_price}, OI: {new_oi})", flush=True)
             return
-        
+
         oi_chg = new_oi - prev_oi
         if abs(oi_chg) == 0:
-            return # No change, no alert
+            return
 
         lots = lots_from_oi_change(symbol, oi_chg)
         if lots >= 50:
@@ -308,9 +45,7 @@ async def process_data(data):
             elif oi_chg > 0 and price_chg < 0: direction_symbol = "⬇️"
             elif oi_chg < 0 and price_chg > 0: direction_symbol = "↗️"
             elif oi_chg < 0 and price_chg < 0: direction_symbol = "↘️"
-            elif oi_chg == 0 and price_chg > 0: direction_symbol = "⬆️"
-            elif oi_chg == 0 and price_chg < 0: direction_symbol = "⬇️"
-
+            
             alert_msg = (f"🔔 FUTURE ALERT: {symbol} {direction_symbol}\n"
                          f"Existing OI: {prev_oi}\n"
                          f"OI Change: {oi_chg} ({lots} lots)\n"
@@ -322,6 +57,13 @@ async def process_data(data):
             print(f"🚀 Alert (Future): {symbol} Lot size >= 50 detected.", flush=True)
         return
 
+    # --- ROUTE 2: Existing logic for Options ---
+    if "FUT" in symbol: # This handles the ...FUT style symbols if any are left
+        underlying = next((key for key in future_prices if key in symbol), None)
+        if underlying and new_price > 0:
+            future_prices[underlying] = new_price
+        return
+
     # --- Standard processing for Option contracts ---
     state["price_prev"], state["oi_prev"] = state.get("price", 0), state.get("oi", 0)
     state["price"], state["oi"] = new_price, new_oi
@@ -331,12 +73,11 @@ async def process_data(data):
         return
 
     oi_chg = state["oi"] - state["oi_prev"]
-    if oi_chg == 0: return
+    if oi_chg == 0:
+        return
 
     price_chg = state["price"] - state["price_prev"]
-    price_chg_percent = 0.0
-    if state["price_prev"] != 0:
-        price_chg_percent = (price_chg / state["price_prev"]) * 100
+    price_chg_percent = (price_chg / state["price_prev"]) * 100 if state["price_prev"] != 0 else 0.0
     oi_roc = (oi_chg / state["oi_prev"]) * 100 if state["oi_prev"] != 0 else 0.0
 
     if abs(oi_roc) > OI_ROC_THRESHOLD:
@@ -348,63 +89,3 @@ async def process_data(data):
             alert_msg = format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices, price_chg, price_chg_percent)
             await send_alert(alert_msg)
             print(f"📊 [{now()}] {symbol}: {moneyness}, lots: {lots}. TRIGGERING ALERT.", flush=True)
-
-# ==============================================================================
-# ============================ MAIN SCANNER LOOP ===============================
-# ==============================================================================
-async def run_scanner():
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-
-    while True:
-        try:
-            async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
-                print(f"✅ [{now()}] Connected to WebSocket. Authenticating...", flush=True)
-                
-                auth_request = {"MessageType": "Authenticate", "Password": API_KEY}
-                await websocket.send(json.dumps(auth_request))
-                auth_response = json.loads(await websocket.recv())
-                
-                if not auth_response.get("Complete"):
-                    print(f"❌ [{now()}] Authentication FAILED: {auth_response.get('Comment')}. Retrying in 30s.", flush=True)
-                    await asyncio.sleep(30)
-                    continue
-                
-                print(f"✅ [{now()}] Authentication successful. Subscribing to {len(SYMBOLS_TO_MONITOR)} symbols...", flush=True)
-                for symbol in SYMBOLS_TO_MONITOR:
-                    await websocket.send(json.dumps({
-                        "MessageType": "SubscribeRealtime", "Exchange": "NFO",
-                        "Unsubscribe": "false", "InstrumentIdentifier": symbol
-                    }))
-                print(f"✅ [{now()}] Subscriptions sent. Scanner is now live.", flush=True)
-                await send_alert("✅ GFDL Scanner is LIVE and monitoring the market.")
-
-                async for message in websocket:
-                    try:
-                        data = json.loads(message)
-                        if data.get("MessageType") == "RealtimeResult":
-                            await process_data(data)                        
-                    except json.JSONDecodeError:
-                        print(f"⚠️ [{now()}] Warning: Received a non-JSON message.", flush=True)
-                    except Exception as e:
-                        print(f"❌ [{now()}] Error during message processing for {message}: {e}", flush=True)
-
-        except websockets.exceptions.ConnectionClosed as e:
-            print(f"⚠️ [{now()}] WebSocket connection closed: {e}. Reconnecting in 10 seconds...", flush=True)
-            await asyncio.sleep(10)
-        except Exception as e:
-            print(f"❌ [{now()}] An unexpected error occurred in the main loop: {e}. Reconnecting in 30 seconds...", flush=True)
-            await asyncio.sleep(30)
-
-if __name__ == "__main__":
-    print("🚀 GFDL Scanner Starting...", flush=True)
-    try:
-        asyncio.run(run_scanner())
-    except KeyboardInterrupt:
-        print("\n🛑 Scanner stopped by user.", flush=True)
-        asyncio.run(send_alert("🛑 GFDL Scanner was stopped manually."))
-    except Exception as e:
-        error_message = f"💥 GFDL Scanner CRASHED with a critical error: {e}"
-        print(error_message, flush=True)
-        asyncio.run(send_alert(error_message))
