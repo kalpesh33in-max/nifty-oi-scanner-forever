@@ -430,9 +430,6 @@ def format_momentum_alert(symbol, trend_name, interpretation, data, future_price
     oi_roc_line = f"OI RoC: {oi_roc:+.2f}%"
     last_option_price_line = f"Last Option Price: {data['end_option_price']:.2f}"
     last_future_price_line = f"Last Future Price: {data['end_future_price']:.2f}"
-    
-
-"
 
     duration_minutes = int(data['duration'] // 60)
     duration_seconds = int(data['duration'] % 60)
