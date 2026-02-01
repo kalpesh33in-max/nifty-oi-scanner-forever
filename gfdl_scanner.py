@@ -6,6 +6,7 @@ import requests
 import functools
 import os
 import sys
+from datetime import datetime # ADDED BACK
 import ssl
 from zoneinfo import ZoneInfo
 
@@ -222,40 +223,41 @@ def get_option_moneyness(symbol, future_prices):
     return "ITM" if is_itm else "OTM"
 
 def format_alert_message(symbol, action, bucket, lots, state, oi_chg, oi_roc, moneyness, future_prices, price_chg, price_chg_percent):
-    price_chg = state['price'] - state['price_prev']
+    """Formats the alert message for options."""
     price_dir = "↑" if price_chg > 0 else "↓" if price_chg < 0 else "↔"
-    product_name = next((key for key in future_prices if key in symbol), "UNKNOWN")
-    if product_name == "ICICIBANK": product_name = "ICICI"
+    
+    # Determine product name for future price lookup
+    product_name = "UNKNOWN"
+    if "HDFCBANK" in symbol: product_name = "HDFCBANK"
+    elif "ICICIBANK" in symbol: product_name = "ICICIBANK"
+    elif "SBIN" in symbol: product_name = "SBIN"
+    elif "BANKNIFTY" in symbol: product_name = "BANKNIFTY"
+    elif "AXISBANK" in symbol: product_name = "AXISBANK"
+    elif "KOTAKBANK" in symbol: product_name = "KOTAKBANK"
 
-
-
-    year, strike_display, option_type_display = "", "", ""
+    strike_display, option_type_display = "", ""
     try:
-        match = re.search(r'(\d{2}[A-Z]{3}\d{2})(\d+)(CE|PE)', symbol)
-        year_str, strike_display, option_type_display = match.groups()
+        # Simplified regex for option symbols
+        match = re.search(r'(\d+)(CE|PE)$', symbol)
+        strike_display, option_type_display = match.groups()
     except Exception:
         pass
 
-    else:
-        # Option alert format
-        product_name_for_future_lookup = product_name
-        if product_name == "ICICI":
-            product_name_for_future_lookup = "ICICIBANK"
-        future_price = future_prices.get(product_name_for_future_lookup, 0)
-
-        return (f"{product_name} | OPTION\n"
-                f"STRIKE: {strike_display}{option_type_display} {moneyness}\n"
-                f"ACTION: {action}\n"
-                f"SIZE: {bucket} ({lots} lots)\n"
-                f"EXISTING OI: {state['oi_prev']}\n"
-                f"OI Δ: {oi_chg}\n"
-                f"OI RoC: {oi_roc:.2f}%\n"
-                f"PRICE: {price_dir}\n"
-                f"PRICE Chg: {price_chg:+.2f} ({price_chg_percent:+.2f}%)\n"
-                f"TIME: {now()}\n"
-                f"{symbol}\n"
-                f"FUTURE PRICE: {future_price:.2f}\n"
-                f"LAST PRICE: {state['price']:.2f}")
+    future_price = future_prices.get(product_name, 0)
+    
+    return (f"{product_name} | OPTION\n"
+            f"STRIKE: {strike_display}{option_type_display} {moneyness}\n"
+            f"ACTION: {action}\n"
+            f"SIZE: {bucket} ({lots} lots)\n"
+            f"EXISTING OI: {state['oi_prev']}\n"
+            f"OI Δ: {oi_chg}\n"
+            f"OI RoC: {oi_roc:.2f}%\n"
+            f"PRICE: {price_dir}\n"
+            f"PRICE Chg: {price_chg:+.2f} ({price_chg_percent:+.2f}%)\n"
+            f"TIME: {now()}\n"
+            f"{symbol}\n"
+            f"FUTURE PRICE: {future_price:.2f}\n"
+            f"LAST PRICE: {state['price']:.2f}")
 
 # ==============================================================================
 # ============================ MAIN SCANNER & WEBSOCKET ========================
