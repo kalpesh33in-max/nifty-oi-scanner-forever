@@ -37,96 +37,96 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 
 # --- Symbol List (Options & Futures) ---
 SYMBOLS_TO_MONITOR = [
-    "BANKNIFTY24FEB2658900CE",
-    "BANKNIFTY24FEB2658900PE",
-    "BANKNIFTY24FEB2658800CE",
-    "BANKNIFTY24FEB2658800PE",
-    "BANKNIFTY24FEB2658700CE",
-    "BANKNIFTY24FEB2658700PE",
-    "BANKNIFTY24FEB2658600CE",
-    "BANKNIFTY24FEB2658600PE",
-    "BANKNIFTY24FEB2658500CE",
-    "BANKNIFTY24FEB2658500PE",
-    "BANKNIFTY24FEB2658400CE",
-    "BANKNIFTY24FEB2658400PE",
-    "BANKNIFTY24FEB2659000CE",
-    "BANKNIFTY24FEB2659000PE",
-    "BANKNIFTY24FEB2659100CE",
-    "BANKNIFTY24FEB2659100PE",
-    "BANKNIFTY24FEB2659200CE",
-    "BANKNIFTY24FEB2659200PE",
-    "BANKNIFTY24FEB2659300CE",
-    "BANKNIFTY24FEB2659300PE",
-    "BANKNIFTY24FEB2659400CE",
-    "BANKNIFTY24FEB2659400PE",
-    "HDFCBANK24FEB26930CE",
-    "HDFCBANK24FEB26930PE",
-    "HDFCBANK24FEB26925CE",
-    "HDFCBANK24FEB26925PE",
-    "HDFCBANK24FEB26920CE",
-    "HDFCBANK24FEB26920PE",
-    "HDFCBANK24FEB26915CE",
-    "HDFCBANK24FEB26915PE",
-    "HDFCBANK24FEB26910CE",
-    "HDFCBANK24FEB26910PE",
-    "HDFCBANK24FEB26905CE",
-    "HDFCBANK24FEB26905PE",
-    "HDFCBANK24FEB26935CE",
-    "HDFCBANK24FEB26935PE",
-    "HDFCBANK24FEB26940CE",
-    "HDFCBANK24FEB26940PE",
-    "HDFCBANK24FEB26945CE",
-    "HDFCBANK24FEB26945PE",
-    "HDFCBANK24FEB26950CE",
-    "HDFCBANK24FEB26950PE",
-    "HDFCBANK24FEB26955CE",
-    "HDFCBANK24FEB26955PE",
-    "SBIN24FEB261040CE",
-    "SBIN24FEB261040PE",
-    "SBIN24FEB261035CE",
-    "SBIN24FEB261035PE",
-    "SBIN24FEB261030CE",
-    "SBIN24FEB261030PE",
-    "SBIN24FEB261025CE",
-    "SBIN24FEB261025PE",
-    "SBIN24FEB261020CE",
-    "SBIN24FEB261020PE",
-    "SBIN24FEB261015CE",
-    "SBIN24FEB261015PE",
-    "SBIN24FEB261045CE",
-    "SBIN24FEB261045PE",
-    "SBIN24FEB261050CE",
-    "SBIN24FEB261050PE",
-    "SBIN24FEB261055CE",
-    "SBIN24FEB261055PE",
-    "SBIN24FEB261060CE",
-    "SBIN24FEB261060PE",
-    "SBIN24FEB261065CE",
-    "SBIN24FEB261065PE",
-    "ICICIBANK24FEB261350CE",
-    "ICICIBANK24FEB261350PE",
-    "ICICIBANK24FEB261340CE",
-    "ICICIBANK24FEB261340PE",
-    "ICICIBANK24FEB261330CE",
-    "ICICIBANK24FEB261330PE",
-    "ICICIBANK24FEB261320CE",
-    "ICICIBANK24FEB261320PE",
-    "ICICIBANK24FEB261310CE",
-    "ICICIBANK24FEB261310PE",
-    "ICICIBANK24FEB261300CE",
-    "ICICIBANK24FEB261300PE",
-    "ICICIBANK24FEB261360CE",
-    "ICICIBANK24FEB261360PE",
-    "ICICIBANK24FEB261370CE",
-    "ICICIBANK24FEB261370PE",
-    "ICICIBANK24FEB261380CE",
-    "ICICIBANK24FEB261380PE",
-    "ICICIBANK24FEB261390CE",
-    "ICICIBANK24FEB261390PE",
-    "ICICIBANK24FEB261400CE",
-    "ICICIBANK24FEB261400PE",
-    "ICICIBANK27JAN261430CE",
-    "ICICIBANK27JAN261430PE",
+    "BANKNIFTY24FEB2658900CE.NFO",
+    "BANKNIFTY24FEB2658900PE.NFO",
+    "BANKNIFTY24FEB2658800CE.NFO",
+    "BANKNIFTY24FEB2658800PE.NFO",
+    "BANKNIFTY24FEB2658700CE.NFO",
+    "BANKNIFTY24FEB2658700PE.NFO",
+    "BANKNIFTY24FEB2658600CE.NFO",
+    "BANKNIFTY24FEB2658600PE.NFO",
+    "BANKNIFTY24FEB2658500CE.NFO",
+    "BANKNIFTY24FEB2658500PE.NFO",
+    "BANKNIFTY24FEB2658400CE.NFO",
+    "BANKNIFTY24FEB2658400PE.NFO",
+    "BANKNIFTY24FEB2659000CE.NFO",
+    "BANKNIFTY24FEB2659000PE.NFO",
+    "BANKNIFTY24FEB2659100CE.NFO",
+    "BANKNIFTY24FEB2659100PE.NFO",
+    "BANKNIFTY24FEB2659200CE.NFO",
+    "BANKNIFTY24FEB2659200PE.NFO",
+    "BANKNIFTY24FEB2659300CE.NFO",
+    "BANKNIFTY24FEB2659300PE.NFO",
+    "BANKNIFTY24FEB2659400CE.NFO",
+    "BANKNIFTY24FEB2659400PE.NFO",
+    "HDFCBANK24FEB26930CE.NFO",
+    "HDFCBANK24FEB26930PE.NFO",
+    "HDFCBANK24FEB26925CE.NFO",
+    "HDFCBANK24FEB26925PE.NFO",
+    "HDFCBANK24FEB26920CE.NFO",
+    "HDFCBANK24FEB26920PE.NFO",
+    "HDFCBANK24FEB26915CE.NFO",
+    "HDFCBANK24FEB26915PE.NFO",
+    "HDFCBANK24FEB26910CE.NFO",
+    "HDFCBANK24FEB26910PE.NFO",
+    "HDFCBANK24FEB26905CE.NFO",
+    "HDFCBANK24FEB26905PE.NFO",
+    "HDFCBANK24FEB26935CE.NFO",
+    "HDFCBANK24FEB26935PE.NFO",
+    "HDFCBANK24FEB26940CE.NFO",
+    "HDFCBANK24FEB26940PE.NFO",
+    "HDFCBANK24FEB26945CE.NFO",
+    "HDFCBANK24FEB26945PE.NFO",
+    "HDFCBANK24FEB26950CE.NFO",
+    "HDFCBANK24FEB26950PE.NFO",
+    "HDFCBANK24FEB26955CE.NFO",
+    "HDFCBANK24FEB26955PE.NFO",
+    "SBIN24FEB261040CE.NFO",
+    "SBIN24FEB261040PE.NFO",
+    "SBIN24FEB261035CE.NFO",
+    "SBIN24FEB261035PE.NFO",
+    "SBIN24FEB261030CE.NFO",
+    "SBIN24FEB261030PE.NFO",
+    "SBIN24FEB261025CE.NFO",
+    "SBIN24FEB261025PE.NFO",
+    "SBIN24FEB261020CE.NFO",
+    "SBIN24FEB261020PE.NFO",
+    "SBIN24FEB261015CE.NFO",
+    "SBIN24FEB261015PE.NFO",
+    "SBIN24FEB261045CE.NFO",
+    "SBIN24FEB261045PE.NFO",
+    "SBIN24FEB261050CE.NFO",
+    "SBIN24FEB261050PE.NFO",
+    "SBIN24FEB261055CE.NFO",
+    "SBIN24FEB261055PE.NFO",
+    "SBIN24FEB261060CE.NFO",
+    "SBIN24FEB261060PE.NFO",
+    "SBIN24FEB261065CE.NFO",
+    "SBIN24FEB261065PE.NFO",
+    "ICICIBANK24FEB261350CE.NFO",
+    "ICICIBANK24FEB261350PE.NFO",
+    "ICICIBANK24FEB261340CE.NFO",
+    "ICICIBANK24FEB261340PE.NFO",
+    "ICICIBANK24FEB261330CE.NFO",
+    "ICICIBANK24FEB261330PE.NFO",
+    "ICICIBANK24FEB261320CE.NFO",
+    "ICICIBANK24FEB261320PE.NFO",
+    "ICICIBANK24FEB261310CE.NFO",
+    "ICICIBANK24FEB261310PE.NFO",
+    "ICICIBANK24FEB261300CE.NFO",
+    "ICICIBANK24FEB261300PE.NFO",
+    "ICICIBANK24FEB261360CE.NFO",
+    "ICICIBANK24FEB261360PE.NFO",
+    "ICICIBANK24FEB261370CE.NFO",
+    "ICICIBANK24FEB261370PE.NFO",
+    "ICICIBANK24FEB261380CE.NFO",
+    "ICICIBANK24FEB261380PE.NFO",
+    "ICICIBANK24FEB261390CE.NFO",
+    "ICICIBANK24FEB261390PE.NFO",
+    "ICICIBANK24FEB261400CE.NFO",
+    "ICICIBANK24FEB261400PE.NFO",
+    "ICICIBANK27JAN261430CE.NFO",
+    "ICICIBANK27JAN261430PE.NFO",
     "BANKNIFTY-I",
     "HDFCBANK-I",
     "ICICIBANK-I",
@@ -282,50 +282,44 @@ async def process_data(data):
         base_symbol = symbol.split("-")[0].upper()
         if new_price > 0: future_prices[base_symbol] = new_price
         
-        if state.get("oi", 0) == 0:
-            state["price"], state["oi"] = new_price, new_oi
+        # Always get the previous state before calculations
+        prev_oi = state.get("oi", 0)
+        prev_price = state.get("price", 0)
+
+        # Update state for the next tick immediately
+        state["price"], state["oi"] = new_price, new_oi
+
+        if prev_oi == 0:
             print(f"🟢 [{now()}] {symbol}: First Data (P: {new_price}, OI: {new_oi})", flush=True)
             return
         
-        oi_chg = new_oi - state["oi"]
-        price_chg = new_price - state["price"] # Calculate price_chg
-        
-        if abs(oi_chg) > 0:
-            lots = lots_from_oi_change(symbol, oi_chg)
-            if lots >= 50:
-                oi_roc = (oi_chg / state["oi"]) * 100 if state["oi"] != 0 else 0.0
-                
-                price_chg_percent = 0.0
-                if state["price"] != 0:
-                    price_chg_percent = (price_chg / state["price"]) * 100
+        oi_chg = new_oi - prev_oi
+        if abs(oi_chg) == 0:
+            return # No change, no alert
 
-                # Determine combined direction symbol
-                direction_symbol = "↔️" # Default for indecisive
-                if oi_chg > 0 and price_chg > 0:
-                    direction_symbol = "⬆️" # Long Buildup
-                elif oi_chg > 0 and price_chg < 0:
-                    direction_symbol = "⬇️" # Short Buildup
-                elif oi_chg < 0 and price_chg > 0:
-                    direction_symbol = "↗️" # Short Covering
-                elif oi_chg < 0 and price_chg < 0:
-                    direction_symbol = "↘️" # Long Unwinding
-                elif oi_chg == 0 and price_chg > 0:
-                    direction_symbol = "⬆️" # Price up, OI flat
-                elif oi_chg == 0 and price_chg < 0:
-                    direction_symbol = "⬇️" # Price down, OI flat
+        lots = lots_from_oi_change(symbol, oi_chg)
+        if lots >= 50:
+            price_chg = new_price - prev_price
+            oi_roc = (oi_chg / prev_oi) * 100 if prev_oi != 0 else 0.0
+            price_chg_percent = (price_chg / prev_price) * 100 if prev_price != 0 else 0.0
 
-                # Update msg format to match future.pdf
-                alert_msg = (f"🔔 FUTURE ALERT: {symbol} {direction_symbol}\n"
-                             f"Existing OI: {state['oi']}\n"
-                             f"OI Change: {oi_chg} ({lots} lots)\n"
-                             f"OI RoC: {oi_roc:.2f}%\n"
-                             f"Price: {new_price:.2f}\n"
-                             f"Price Chg: {price_chg:+.2f} ({price_chg_percent:+.2f}%)\n"
-                             f"Time: {now()}")
-                await send_alert(alert_msg)
-                print(f"🚀 Alert (Future): {symbol} Lot size >= 50", flush=True)
-        
-        state["price"], state["oi"] = new_price, new_oi
+            direction_symbol = "↔️"
+            if oi_chg > 0 and price_chg > 0: direction_symbol = "⬆️"
+            elif oi_chg > 0 and price_chg < 0: direction_symbol = "⬇️"
+            elif oi_chg < 0 and price_chg > 0: direction_symbol = "↗️"
+            elif oi_chg < 0 and price_chg < 0: direction_symbol = "↘️"
+            elif oi_chg == 0 and price_chg > 0: direction_symbol = "⬆️"
+            elif oi_chg == 0 and price_chg < 0: direction_symbol = "⬇️"
+
+            alert_msg = (f"🔔 FUTURE ALERT: {symbol} {direction_symbol}\n"
+                         f"Existing OI: {prev_oi}\n"
+                         f"OI Change: {oi_chg} ({lots} lots)\n"
+                         f"OI RoC: {oi_roc:.2f}%\n"
+                         f"Price: {new_price:.2f}\n"
+                         f"Price Chg: {price_chg:+.2f} ({price_chg_percent:+.2f}%)\n"
+                         f"Time: {now()}")
+            await send_alert(alert_msg)
+            print(f"🚀 Alert (Future): {symbol} Lot size >= 50 detected.", flush=True)
         return
 
     # --- Standard processing for Option contracts ---
