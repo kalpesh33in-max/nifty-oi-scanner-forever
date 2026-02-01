@@ -3,3 +3,4 @@ httpx
 pandas
 xlrd
 openpyxl
+requests
