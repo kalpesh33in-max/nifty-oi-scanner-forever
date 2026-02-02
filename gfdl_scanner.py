@@ -101,8 +101,8 @@ async def process_data(data):
     # 3. Calculate Lots
     lots_affected = int(abs(oi_change) / lot_size)
 
-    # 4. SINGLE TRIGGER: Only if Lots > 50
-    if lots_affected >= 50:
+    # 4. SINGLE TRIGGER: Only if Lots > 100
+    if lots_affected >= 100:
         # Determine Directions
         oi_dir = "INCREASE ➕" if oi_change > 0 else "DECREASE ➖"
         price_change = new_price - prev_price
