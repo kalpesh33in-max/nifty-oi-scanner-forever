@@ -6,6 +6,7 @@ import sys
 import ssl
 import requests
 import functools
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -26,7 +27,7 @@ LOT_SIZES = {
     "SBIN": 750, 
     "ICICIBANK": 700, 
     "AXISBANK": 625, 
-    "KOTAKBANK": 400 # Updated to current standard
+    "KOTAKBANK": 400
 }
 DEFAULT_LOT_SIZE = 75
 
@@ -78,48 +79,48 @@ async def process_data(data):
     prev_oi = state["oi"]
     prev_price = state["price"]
     
-    # Update State
+    # Update State for next comparison
     state["oi"] = new_oi
     state["price"] = new_price
 
-    # Baseline Check: Ignore the first data point to calculate change accurately
+    # Ignore first packet to establish a baseline
     if prev_oi == 0:
-        print(f"📡 Initializing {symbol} | OI: {new_oi}", flush=True)
         return
 
     # 1. Calculate OI Change
     oi_change = new_oi - prev_oi
     if oi_change == 0: return
 
-    # 2. Identify Base Symbol for Lot Size
-    # Extracts 'BANKNIFTY' from 'BANKNIFTY24FEB2658900CE' or 'BANKNIFTY-I'
-    import re
+    # 2. Identify Lot Size
     base_match = re.match(r'^([A-Z]+)', symbol)
     base_symbol = base_match.group(1) if base_match else "UNKNOWN"
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     
-    # 3. Calculate Lots
+    # 3. Calculate Lots (Absolute value to catch buying and covering)
     lots_affected = int(abs(oi_change) / lot_size)
 
-    # 4. SINGLE TRIGGER: Only if Lots > 50
-    if lots_affected >= 50:
+    # 4. TRIGGER: Only if Lots > 100
+    if lots_affected >= 100:
         # Determine Directions
-        oi_dir = "INCREASE ➕" if oi_change > 0 else "DECREASE ➖"
+        oi_dir = "ADDITION 🟢" if oi_change > 0 else "EXIT/COVERING 🔴"
         price_change = new_price - prev_price
         price_dir = "UP ▲" if price_change > 0 else "DOWN ▼" if price_change < 0 else "FLAT ↔"
         
-        # Build Alert
+        # Build Alert Message
         alert_type = "FUTURE" if symbol.endswith("-I") else "OPTION"
         msg = (
             f"🔔 {alert_type} ALERT: {symbol}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"LOTS: {lots_affected} ({oi_dir})\n"
             f"PRICE: {new_price:.2f} ({price_dir})\n"
-            f"OI CHANGE: {oi_change:+,d}\n"
-            f"PRICE CHG: {price_change:+.2f}\n"
-            f"TIME: {now()}"
+            f"━━━━━━━━━━━━━━━\n"
+            f"EXISTING OI: {prev_oi:,}\n"
+            f"OI CHANGE  : {oi_change:+,d}\n"
+            f"NEW OI     : {new_oi:,}\n"
+            f"PRICE CHG  : {price_change:+.2f}\n"
+            f"TIME       : {now()}"
         )
-        print(f"🚀 Sending Alert for {symbol} ({lots_affected} lots)", flush=True)
+        print(f"🚀 [ALERT] {symbol}: {lots_affected} lots detected.", flush=True)
         await send_alert(msg)
 
 # ============================ MAIN SCANNER LOOP ===============================
@@ -127,22 +128,23 @@ async def run_scanner():
     while True:
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
-                # Auth
+                # Authentication
                 await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
                 auth_resp = json.loads(await websocket.recv())
                 if not auth_resp.get("Complete"):
-                    await asyncio.sleep(10)
+                    print(f"❌ Auth Failed: {auth_resp.get('Comment')}", flush=True)
+                    await asyncio.sleep(15)
                     continue
                 
-                # Subscribe
+                # Subscription
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({
                         "MessageType": "SubscribeRealtime", "Exchange": "NFO",
                         "Unsubscribe": "false", "InstrumentIdentifier": sym
                     }))
                 
-                print(f"✅ Scanner Live at {now()}. Monitoring {len(SYMBOLS_TO_MONITOR)} symbols.", flush=True)
-                await send_alert("✅ GFDL Scanner is LIVE. Trigger set to > 50 Lots.")
+                print(f"✅ Scanner Live at {now()}. Trigger: > 100 Lots.", flush=True)
+                await send_alert("✅ GFDL Scanner is LIVE. Trigger set to > 100 Lots.")
 
                 async for message in websocket:
                     data = json.loads(message)
@@ -150,11 +152,11 @@ async def run_scanner():
                         await process_data(data)
 
         except Exception as e:
-            print(f"❌ Connection error: {e}. Retrying in 10s...", flush=True)
+            print(f"❌ Connection error: {e}. Reconnecting...", flush=True)
             await asyncio.sleep(10)
 
 if __name__ == "__main__":
     if not all([API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
-        print("❌ Error: Environment variables not set.")
+        print("❌ CRITICAL: Missing Environment Variables.")
         sys.exit(1)
     asyncio.run(run_scanner())
