@@ -1,13 +1,3 @@
-None selected
-
-Skip to content
-Using Gmail with screen readers
-label:gfdl 
-Conversations
-2% of 2,048 GB used
-Terms · Privacy · Program Policies
-Last account activity: 50 minutes ago
-Details
 import asyncio
 import websockets
 import json
@@ -29,11 +19,11 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 
 LOT_SIZES = {
     "BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, 
-    "SBIN": 750, "ICICIBANK": 700, "AXISBANK": 625, "KOTAKBANK": 400
+    "SBIN": 750, "ICICIBANK": 700, "AXISBANK": 625
 }
 DEFAULT_LOT_SIZE = 75
 
-SYMBOLS_TO_MONITOR =  [
+SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2658700CE", "BANKNIFTY24FEB2658700PE", "BANKNIFTY24FEB2658600CE", "BANKNIFTY24FEB2658600PE",
     "BANKNIFTY24FEB2658500CE", "BANKNIFTY24FEB2658500PE", "BANKNIFTY24FEB2658400CE", "BANKNIFTY24FEB2658400PE",
     "BANKNIFTY24FEB2658300CE", "BANKNIFTY24FEB2658300PE", "BANKNIFTY24FEB2658200CE", "BANKNIFTY24FEB2658200PE",
@@ -60,7 +50,6 @@ SYMBOLS_TO_MONITOR =  [
     "HDFCBANK24FEB26955CE", "HDFCBANK24FEB26955PE",
     "BANKNIFTY-I", "HDFCBANK-I", "ICICIBANK-I", "SBIN-I", "AXISBANK-I"
 ]
-
 
 # ============================== STATE & UTILITIES =============================
 symbol_data_state = {symbol: {"price": 0, "oi": 0} for symbol in SYMBOLS_TO_MONITOR}
