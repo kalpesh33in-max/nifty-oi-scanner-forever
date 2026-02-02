@@ -237,5 +237,3 @@ async def run_scanner():
 
 if __name__ == "__main__":
     asyncio.run(run_scanner())
-gfdl_scanner.py
-Displaying gfdl_scanner.py.
