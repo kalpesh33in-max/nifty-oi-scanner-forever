@@ -1,13 +1,4 @@
-Conversation opened. 1 read message.
 
-Skip to content
-Using Gmail with screen readers
-label:gfdl 
-Conversations
-2% of 2,048 GB used
-Terms · Privacy · Program Policies
-Last account activity: 50 minutes ago
-Details
 import asyncio
 import websockets
 import json
