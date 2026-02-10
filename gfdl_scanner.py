@@ -81,8 +81,8 @@ SYMBOLS_TO_MONITOR = [
 ]
 
 # ============================== STATE & UTILITIES =============================
-# Store snapshots of data every 3 minutes
-symbol_data_state = {symbol: {"price": 0, "oi": 0, "last_alert_time": datetime.min} for symbol in SYMBOLS_TO_MONITOR}
+# Added 'snapshot_time' to track the 3-minute window per symbol
+symbol_data_state = {symbol: {"price": 0, "oi": 0, "snapshot_time": datetime.now()} for symbol in SYMBOLS_TO_MONITOR}
 future_prices = {k: 0 for k in LOT_SIZES.keys()}
 
 def now():
@@ -129,32 +129,32 @@ async def process_data(data):
 
     state = symbol_data_state[symbol]
     
-    # Initialize data if first time
+    # Update Future price globally whenever it arrives
+    base_match = re.match(r'^([A-Z]+)', symbol)
+    if base_match:
+        base_symbol = base_match.group(1)
+        if symbol.endswith("-I"):
+            future_prices[base_symbol] = new_price
+
+    # Initialize if this is the first data point
     if state["oi"] == 0:
         state["oi"], state["price"] = new_oi, new_price
-        state["last_alert_time"] = datetime.now()
+        state["snapshot_time"] = datetime.now()
         return
 
-    # Tracking Future Prices for the alert display
-    base_match = re.match(r'^([A-Z]+)', symbol)
-    if not base_match: return
-    base_symbol = base_match.group(1)
-    if symbol.endswith("-I"):
-        future_prices[base_symbol] = new_price
-
-    # 3-MINUTE LOGIC: Check if 3 minutes have passed since last snapshot
-    current_time = datetime.now()
-    if current_time - state["last_alert_time"] < timedelta(minutes=3):
-        return # Skip processing until 3 mins are up to avoid "wrong direction" noise
+    # Check if 3 minutes have passed since the last snapshot
+    time_diff = datetime.now() - state["snapshot_time"]
+    if time_diff < timedelta(minutes=3):
+        return  # Only process alerts every 3 minutes
 
     prev_oi, prev_price = state["oi"], state["price"]
     oi_change = new_oi - prev_oi
-    
-    # Update snapshot for next 3-minute window
-    state["oi"], state["price"] = new_oi, new_price
-    state["last_alert_time"] = current_time
 
-    if oi_change == 0: return
+    # Reset snapshot for the next 3-minute window
+    state["oi"], state["price"] = new_oi, new_price
+    state["snapshot_time"] = datetime.now()
+
+    if oi_change == 0: return 
 
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     lots_affected = int(abs(oi_change) / lot_size)
@@ -166,7 +166,7 @@ async def process_data(data):
         action = classify_action(symbol, oi_change, price_change)
         f_price = future_prices.get(base_symbol, 0)
         
-        # YOUR EXACT ORIGINAL FORMAT (UNTOUCHED)
+        # EXACT FORMAT FROM YOUR SCREENSHOTS
         msg = (
             f"{strength}\n"
             f"🚨 {action}\n"
@@ -190,21 +190,28 @@ async def run_scanner():
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
                 await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
-                resp = await websocket.recv()
-                if not json.loads(resp).get("Complete"): 
+                auth_resp = await websocket.recv()
+                if not json.loads(auth_resp).get("Complete"): 
                     await asyncio.sleep(10)
                     continue
                 
                 for sym in SYMBOLS_TO_MONITOR:
-                    await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                    await websocket.send(json.dumps({
+                        "MessageType": "SubscribeRealtime", 
+                        "Exchange": "NFO", 
+                        "Unsubscribe": "false", 
+                        "InstrumentIdentifier": sym
+                    }))
                 
-                print(f"✅ Scanner Live | 3-Min Decision Window Active", flush=True)
+                print(f"✅ Scanner Live | 3-Minute Window Active", flush=True)
+                await send_alert("✅ Scanner Started | Monitoring for OK to BLAST signals with 3-Min Trends.")
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
                     if msg_data.get("MessageType") == "RealtimeResult":
                         await process_data(msg_data)
         except Exception as e:
+            print(f"Connection lost: {e}")
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
