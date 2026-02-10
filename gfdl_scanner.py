@@ -2,7 +2,6 @@ import asyncio
 import websockets
 import json
 import os
-import sys
 import re
 import requests
 import functools
@@ -75,14 +74,13 @@ SYMBOLS_TO_MONITOR = [
     "ICICIBANK24FEB261430CE", "ICICIBANK24FEB261430PE",
     "ICICIBANK24FEB261440CE", "ICICIBANK24FEB261440PE",
     "ICICIBANK24FEB261450CE", "ICICIBANK24FEB261450PE",
-    "BANKNIFTY-I",
-    "HDFCBANK-I",
-    "ICICIBANK-I"
+    "BANKNIFTY-I", "HDFCBANK-I", "ICICIBANK-I"
 ]
 
 # ============================== STATE & UTILITIES =============================
-# Store snapshots of data every 3 minutes
-symbol_data_state = {symbol: {"price": 0, "oi": 0, "last_alert_time": datetime.min} for symbol in SYMBOLS_TO_MONITOR}
+# active_watches stores: start_oi, start_price, and end_time
+symbol_data_state = {symbol: {"price": 0, "oi": 0} for symbol in SYMBOLS_TO_MONITOR}
+active_watches = {} 
 future_prices = {k: 0 for k in LOT_SIZES.keys()}
 
 def now():
@@ -120,69 +118,77 @@ def classify_action(symbol, oi_chg, price_chg):
         else: return "LONG UNWINDING (CE) ⤵️" if is_call else "LONG UNWINDING (PE) ⤵️"
 
 async def process_data(data):
-    global symbol_data_state, future_prices
+    global symbol_data_state, active_watches, future_prices
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state: return
 
     new_price, new_oi = data.get("LastTradePrice"), data.get("OpenInterest")
     if new_price is None or new_oi is None: return
 
-    state = symbol_data_state[symbol]
-    
-    # Initialize data if first time
-    if state["oi"] == 0:
-        state["oi"], state["price"] = new_oi, new_price
-        state["last_alert_time"] = datetime.now()
-        return
-
-    # Tracking Future Prices for the alert display
     base_match = re.match(r'^([A-Z]+)', symbol)
     if not base_match: return
     base_symbol = base_match.group(1)
+
     if symbol.endswith("-I"):
         future_prices[base_symbol] = new_price
 
-    # 3-MINUTE LOGIC: Check if 3 minutes have passed since last snapshot
-    current_time = datetime.now()
-    if current_time - state["last_alert_time"] < timedelta(minutes=3):
-        return # Skip processing until 3 mins are up to avoid "wrong direction" noise
-
-    prev_oi, prev_price = state["oi"], state["price"]
-    oi_change = new_oi - prev_oi
+    state = symbol_data_state[symbol]
+    prev_oi = state["oi"]
     
-    # Update snapshot for next 3-minute window
-    state["oi"], state["price"] = new_oi, new_price
-    state["last_alert_time"] = current_time
+    # First time initialization
+    if prev_oi == 0:
+        state["oi"], state["price"] = new_oi, new_price
+        return
 
-    if oi_change == 0: return
-
+    # STEP 1: DETECT INITIAL 50-LOT TICK
+    oi_tick_diff = new_oi - prev_oi
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
-    lots_affected = int(abs(oi_change) / lot_size)
+    tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    # TRIGGER: 50 lots minimum over the 3-minute window
-    if lots_affected >= 50:
-        strength = get_strength_label(lots_affected)
-        price_change = new_price - prev_price
-        action = classify_action(symbol, oi_change, price_change)
-        f_price = future_prices.get(base_symbol, 0)
-        
-        # YOUR EXACT ORIGINAL FORMAT (UNTOUCHED)
-        msg = (
-            f"{strength}\n"
-            f"🚨 {action}\n"
-            f"Symbol: {symbol}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"LOTS: {lots_affected}\n"
-            f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\n"
-            f"FUTURE PRICE: {f_price:.2f}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"EXISTING OI: {prev_oi:,}\n"
-            f"OI CHANGE  : {oi_change:+,d}\n"
-            f"NEW OI     : {new_oi:,}\n"
-            f"TIME: {now()}"
-        )
-        print(f"🚀 {strength} Alert Triggered: {symbol}")
-        await send_alert(msg)
+    if tick_lots >= 50 and symbol not in active_watches:
+        print(f"🔍 Triggered 50-lot watch for {symbol}. Waiting 2 minutes...")
+        active_watches[symbol] = {
+            "start_oi": prev_oi,
+            "start_price": state["price"],
+            "end_time": datetime.now() + timedelta(minutes=2)
+        }
+
+    # Update current state per tick
+    state["oi"], state["price"] = new_oi, new_price
+
+    # STEP 2: CHECK IF 2-MINUTE WATCH IS COMPLETE
+    if symbol in active_watches:
+        watch = active_watches[symbol]
+        if datetime.now() >= watch["end_time"]:
+            # Final 2-minute calculation
+            final_oi_change = new_oi - watch["start_oi"]
+            final_lots = int(abs(final_oi_change) / lot_size)
+
+            if final_lots >= 50:
+                strength = get_strength_label(final_lots)
+                price_change = new_price - watch["start_price"]
+                action = classify_action(symbol, final_oi_change, price_change)
+                f_price = future_prices.get(base_symbol, 0)
+
+                # YOUR EXACT MESSAGE FORMAT
+                msg = (
+                    f"{strength}\n"
+                    f"🚨 {action}\n"
+                    f"Symbol: {symbol}\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"LOTS: {final_lots}\n"
+                    f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\n"
+                    f"FUTURE PRICE: {f_price:.2f}\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"EXISTING OI: {watch['start_oi']:,}\n"
+                    f"OI CHANGE  : {final_oi_change:+,d}\n"
+                    f"NEW OI     : {new_oi:,}\n"
+                    f"TIME: {now()}"
+                )
+                await send_alert(msg)
+            
+            # Remove from watch list after processing
+            del active_watches[symbol]
 
 # ============================ MAIN SCANNER LOOP ===============================
 async def run_scanner():
@@ -190,15 +196,20 @@ async def run_scanner():
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
                 await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
-                resp = await websocket.recv()
-                if not json.loads(resp).get("Complete"): 
+                auth_resp = await websocket.recv()
+                if not json.loads(auth_resp).get("Complete"): 
                     await asyncio.sleep(10)
                     continue
                 
                 for sym in SYMBOLS_TO_MONITOR:
-                    await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                    await websocket.send(json.dumps({
+                        "MessageType": "SubscribeRealtime", 
+                        "Exchange": "NFO", 
+                        "Unsubscribe": "false", 
+                        "InstrumentIdentifier": sym
+                    }))
                 
-                print(f"✅ Scanner Live | 3-Min Decision Window Active", flush=True)
+                print(f"✅ Scanner Live | Trigger: 50+ Tick -> 2-Min Watch", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
