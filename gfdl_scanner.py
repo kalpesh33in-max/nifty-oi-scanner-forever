@@ -19,7 +19,7 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
-# Your list of 97 symbols
+# Full list of 97 symbols as requested
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -64,32 +64,22 @@ async def send_alert(msg: str):
         print(f"⚠️ Telegram Error: {e}")
 
 # =============================== CORE LOGIC ===================================
-def is_acceptable_strike(symbol, future_price):
-    """
-    STRICT ABSOLUTE FILTER:
-    Blocks ALL OTM strikes. Only allows ITM and ATM for BOTH SIDES.
-    """
-    if symbol.endswith("-I") or future_price == 0: return True
-    
-    match = re.search(r'(\d{3,7})(CE|PE)$', symbol)
-    if not match: return True
-    
-    strike = float(match.group(1))
-    is_call = match.group(2) == "CE"
-    
-    # 25-point buffer ensures that ATM strikes aren't killed due to minor price ticks
-    if is_call:
-        # CE is ITM/ATM if Strike <= Future
-        return strike <= (future_price + 25) 
-    else:
-        # PE is ITM/ATM if Strike >= Future
-        return strike >= (future_price - 25)
-
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
     elif lots >= 300: return "🌟 AWESOME"
-    elif lots >= 200: return "✅ VERY GOOD"
-    else: return "👍 GOOD" 
+    else: return "✅ VERY GOOD" # Now starts at VERY GOOD for 200+ lots
+
+def classify_action(symbol, oi_chg, price_chg):
+    if symbol.endswith("-I"):
+        if oi_chg > 0: return "FUTURE BUY (LONG) 📈" if price_chg >= 0 else "FUTURE SELL (SHORT) 📉"
+        else: return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
+    is_call = symbol.endswith("CE")
+    if oi_chg > 0:
+        if price_chg >= 0: return "CALL BUY 🔵" if is_call else "PUT BUY 🔴"
+        else: return "CALL WRITER ✍️" if is_call else "PUT WRITER ✍️"
+    else:
+        if price_chg >= 0: return "SHORT COVERING (CE) ⤴️" if is_call else "SHORT COVERING (PE) ⤴️"
+        else: return "LONG UNWINDING (CE) ⤵️" if is_call else "LONG UNWINDING (PE) ⤵️"
 
 async def process_data(data):
     global symbol_data_state, active_watches, future_prices
@@ -100,29 +90,24 @@ async def process_data(data):
     if new_price is None or new_oi is None: return
 
     base_match = re.match(r'^([A-Z]+)', symbol)
-    if not base_match: return
-    base_symbol = base_match.group(1)
-    if symbol.endswith("-I"): future_prices[base_symbol] = new_price
-
-    f_price = future_prices.get(base_symbol, 0)
-    
-    # Check Strike validity for both CE and PE
-    if not is_acceptable_strike(symbol, f_price): return 
+    if base_match:
+        base_symbol = base_match.group(1)
+        if symbol.endswith("-I"): future_prices[base_symbol] = new_price
 
     state = symbol_data_state[symbol]
     if state["oi"] == 0:
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    # Trigger logic: 100-lot surge
+    # UPDATED TRIGGER: Starts watch only if tick is >= 200 lots
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    if tick_lots >= 100 and symbol not in active_watches:
+    if tick_lots >= 200 and symbol not in active_watches:
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
-            "start_f_price": f_price, "end_time": datetime.now() + timedelta(minutes=2)
+            "end_time": datetime.now() + timedelta(minutes=2)
         }
 
     state["oi"], state["price"] = new_oi, new_price
@@ -133,19 +118,11 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # Confirm move sustained for 2 minutes
-            if final_lots >= 100:
+            # UPDATED CONFIRMATION: Sends alert only if net change is >= 200 lots
+            if final_lots >= 200:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
+                action = classify_action(symbol, final_oi_change, price_change)
                 
-                is_call = symbol.endswith("CE")
-                # Classification logic for both sides
-                if final_oi_change > 0:
-                    if price_change >= 0: action = "CALL BUY 🔵" if is_call else "PUT BUY 🔴"
-                    else: action = "CALL WRITER ✍️" if is_call else "PUT WRITER ✍️"
-                else:
-                    if price_change >= 0: action = "SHORT COVERING (CE) ⤴️" if is_call else "SHORT COVERING (PE) ⤴️"
-                    else: action = "LONG UNWINDING (CE) ⤵️" if is_call else "LONG UNWINDING (PE) ⤵️"
-
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_prices.get(base_symbol, 0):.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
@@ -162,8 +139,8 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | STRICT ITM+ATM BOTH SIDES | 100-Lot Trigger.")
-                print(f"✅ Scanner Live | Both Sides Active | Absolute Filter", flush=True)
+                await send_alert("✅ Scanner Started | Monitoring 97 Symbols | 200-Lot Trigger.")
+                print(f"✅ Scanner Live | High-Volume 200-Lot Trigger Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
