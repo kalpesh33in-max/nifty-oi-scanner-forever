@@ -16,11 +16,10 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-# Updated Lot Sizes
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
-# Your verified list of 97 symbols
+# 97 VERIFIED SYMBOLS
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -68,10 +67,12 @@ async def send_alert(msg: str):
 def is_acceptable_strike(symbol, future_price):
     """
     STRICT DYNAMIC SELECTION:
-    Allows ALL ITM, ATM, and EXACTLY ONE OTM strike.
-    Blocks anything deeper than 1 strike OTM.
+    Blocks all OTM deeper than 1 strike based on live Future Price.
     """
     if symbol.endswith("-I") or future_price == 0: return True
+    
+    # 1. Identify ATM Strike by rounding to nearest 100 (for Indices)
+    atm_strike = round(future_price / 100) * 100
     
     match = re.search(r'(\d{3,7})(CE|PE)$', symbol)
     if not match: return True
@@ -79,11 +80,11 @@ def is_acceptable_strike(symbol, future_price):
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
     
-    # 150 Point Buffer allows exactly one strike (100 pts) out
+    # 2. Apply Strict Filter: Allowed = All ITM + ATM + 1 OTM
     if is_call:
-        return strike <= (future_price + 150) # ITM + ATM + 1 OTM
+        return strike <= (atm_strike + 100) 
     else:
-        return strike >= (future_price - 150) # ITM + ATM + 1 OTM
+        return strike >= (atm_strike - 100)
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
@@ -118,7 +119,7 @@ async def process_data(data):
 
     f_price = future_prices.get(base_symbol, 0)
     
-    # DYNAMIC SELECTION CHECK
+    # DYNAMIC SELECTION: Kill OTM signals
     if not is_acceptable_strike(symbol, f_price): return 
 
     state = symbol_data_state[symbol]
@@ -126,7 +127,7 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    # Trigger: Upgraded to 100-lot tick
+    # Trigger: 100-lot surge starts 2-min watch
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
@@ -145,10 +146,12 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # Confirmation: 100 Lots
+            # Confirmation: Must still be 100+ lots after 2 mins
             if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 action = classify_action(symbol, final_oi_change, price_change)
+                
+                # EXACT TELEGRAM DESIGN
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_prices.get(base_symbol, 0):.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
@@ -165,8 +168,9 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | 100-Lot Trigger | ITM+ATM+1-OTM Only.")
-                print(f"✅ Scanner Live | Dynamic Strike Filter Active", flush=True)
+                # STARTUP NOTIFICATION
+                await send_alert("✅ Scanner Started | Monitoring for OK to BLAST signals with Existing OI.")
+                print(f"✅ Scanner Live | Dynamic Strike Selection | 100-Lot Trigger", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
