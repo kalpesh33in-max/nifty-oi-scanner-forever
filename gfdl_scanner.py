@@ -19,7 +19,6 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
-# Your list of 97 symbols
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -66,15 +65,10 @@ async def send_alert(msg: str):
 # =============================== CORE LOGIC ===================================
 def is_acceptable_strike(symbol, future_price):
     """
-    STRICT DYNAMIC GRID:
-    Calculates current ATM and allows ONLY ITM and ATM strikes.
-    Blocks ALL OTM strikes completely.
+    STRICT ABSOLUTE FILTER:
+    Blocks ALL OTM strikes by direct math comparison with live Future price.
     """
     if symbol.endswith("-I") or future_price == 0: return True
-    
-    # 1. Calculate the exact ATM strike (rounded to nearest 100 for BankNifty)
-    # For Stocks like HDFC/ICICI, it rounds to their specific tick (handled by 100 here)
-    atm_strike = round(future_price / 100) * 100
     
     match = re.search(r'(\d{3,7})(CE|PE)$', symbol)
     if not match: return True
@@ -82,12 +76,11 @@ def is_acceptable_strike(symbol, future_price):
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
     
-    # 2. Strict Filter: ONLY ITM + ATM
-    # Removes the +100/-100 allowance entirely
+    # Direct math comparison: No rounding, no buffers
     if is_call:
-        return strike <= atm_strike # Calls: Only Strike at or below ATM
+        return strike <= future_price # CE: Strike at or below Future
     else:
-        return strike >= atm_strike # Puts: Only Strike at or above ATM
+        return strike >= future_price # PE: Strike at or above Future
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
@@ -110,7 +103,7 @@ async def process_data(data):
 
     f_price = future_prices.get(base_symbol, 0)
     
-    # DYNAMIC GRID CHECK: Blocks any OTM
+    # Check Strike validity before anything else
     if not is_acceptable_strike(symbol, f_price): return 
 
     state = symbol_data_state[symbol]
@@ -118,7 +111,7 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    # Trigger Rule: 100-lot surge
+    # Trigger logic: 100-lot surge starts 2-min watch
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
@@ -137,7 +130,7 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # Confirmation: 100+ lots
+            # Confirm move sustained for 2 minutes
             if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 
@@ -165,8 +158,8 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | STRICT ITM+ATM Only | 100-Lot Trigger.")
-                print(f"✅ Scanner Live | Strict ITM/ATM Only Active", flush=True)
+                await send_alert("✅ Scanner Started | STRICT ATM/ITM ONLY | 100-Lot Trigger.")
+                print(f"✅ Scanner Live | Absolute Strike Filter Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
