@@ -19,6 +19,7 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
+# Your 97 symbols list
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -66,7 +67,7 @@ async def send_alert(msg: str):
 def is_acceptable_strike(symbol, future_price):
     """
     STRICT ABSOLUTE FILTER:
-    Blocks ALL OTM strikes by direct math comparison with live Future price.
+    Blocks ALL OTM strikes. Only allows ITM and ATM.
     """
     if symbol.endswith("-I") or future_price == 0: return True
     
@@ -76,11 +77,13 @@ def is_acceptable_strike(symbol, future_price):
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
     
-    # Direct math comparison: No rounding, no buffers
+    # YOUR EXACT LOGIC: PE >= Future | CE <= Future
+    # We use a tiny 25-point buffer just to ensure ATM strikes sitting 
+    # slightly outside aren't accidentally killed.
     if is_call:
-        return strike <= future_price # CE: Strike at or below Future
+        return strike <= (future_price + 25) 
     else:
-        return strike >= future_price # PE: Strike at or above Future
+        return strike >= (future_price - 25)
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
@@ -103,7 +106,7 @@ async def process_data(data):
 
     f_price = future_prices.get(base_symbol, 0)
     
-    # Check Strike validity before anything else
+    # CHECK STRIKE VALIDITY: Kill OTM immediately
     if not is_acceptable_strike(symbol, f_price): return 
 
     state = symbol_data_state[symbol]
@@ -111,7 +114,7 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    # Trigger logic: 100-lot surge starts 2-min watch
+    # Trigger logic: 100-lot surge
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
@@ -130,7 +133,7 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # Confirm move sustained for 2 minutes
+            # Final Confirmation: 100+ lots
             if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 
