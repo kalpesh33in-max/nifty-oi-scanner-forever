@@ -63,23 +63,21 @@ async def send_alert(msg: str):
         print(f"⚠️ Telegram Error: {e}")
 
 # =============================== CORE LOGIC ===================================
-def is_atm_or_itm(symbol, future_price):
+def is_acceptable_strike(symbol, future_price):
     if symbol.endswith("-I") or future_price == 0: return True
     match = re.search(r'(\d{3,7})(CE|PE)$', symbol)
     if not match: return True
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
-    atm_buffer = 150 
-    if is_call: return strike <= (future_price + atm_buffer)
-    else: return strike >= (future_price - atm_buffer)
+    if is_call: return strike <= (future_price + 150)
+    else: return strike >= (future_price - 150)
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
     elif lots >= 300: return "🌟 AWESOME"
-    elif lots >= 200: return "✅ VERY GOOD"
-    else: return "👍 GOOD" # Now starts from GOOD for 100+ lots
+    else: return "✅ VERY GOOD" # Now starts from VERY GOOD for 200+ lots
 
-def classify_action(symbol, oi_chg, price_chg, f_price_chg):
+def classify_action(symbol, oi_chg, price_chg):
     if symbol.endswith("-I"):
         if oi_chg > 0: return "FUTURE BUY (LONG) 📈" if price_chg >= 0 else "FUTURE SELL (SHORT) 📉"
         else: return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
@@ -104,7 +102,7 @@ async def process_data(data):
     if symbol.endswith("-I"): future_prices[base_symbol] = new_price
 
     f_price = future_prices.get(base_symbol, 0)
-    if not is_atm_or_itm(symbol, f_price): return
+    if not is_acceptable_strike(symbol, f_price): return 
 
     state = symbol_data_state[symbol]
     if state["oi"] == 0:
@@ -115,8 +113,8 @@ async def process_data(data):
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    # NEW UPGRADED TRIGGER: 100 Lots
-    if tick_lots >= 100 and symbol not in active_watches:
+    # UPDATED TRIGGER: 200 Lots
+    if tick_lots >= 200 and symbol not in active_watches:
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
             "start_f_price": f_price, "end_time": datetime.now() + timedelta(minutes=2)
@@ -130,10 +128,10 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # NEW CONFIRMATION: 100 Lots
-            if final_lots >= 100:
+            # UPDATED CONFIRMATION: 200 Lots
+            if final_lots >= 200:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
-                action = classify_action(symbol, final_oi_change, price_change, new_price - watch["start_f_price"])
+                action = classify_action(symbol, final_oi_change, price_change)
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_prices.get(base_symbol, 0):.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
@@ -150,8 +148,8 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | Upgraded Trigger: 100 Lots.")
-                print(f"✅ Scanner Live | 100-Lot Trigger Active", flush=True)
+                await send_alert("✅ Scanner Started | High-Power Trigger: 200 Lots.")
+                print(f"✅ Scanner Live | 200-Lot Trigger Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
