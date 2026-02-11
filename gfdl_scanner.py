@@ -16,16 +16,9 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-LOT_SIZES = {
-    "BANKNIFTY": 30,
-    "NIFTY": 75,
-    "HDFCBANK": 550,
-    "ICICIBANK": 700,
-    "SBIN": 750
-}
+LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
-# VERIFIED LIST OF 97 SYMBOLS
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -76,7 +69,7 @@ def is_atm_or_itm(symbol, future_price):
     if not match: return True
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
-    atm_buffer = 150 # Covers ATM zone
+    atm_buffer = 150 
     if is_call: return strike <= (future_price + atm_buffer)
     else: return strike >= (future_price - atm_buffer)
 
@@ -84,8 +77,7 @@ def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
     elif lots >= 300: return "🌟 AWESOME"
     elif lots >= 200: return "✅ VERY GOOD"
-    elif lots >= 100: return "👍 GOOD"
-    else: return "🆗 OK"
+    else: return "👍 GOOD" # Now starts from GOOD for 100+ lots
 
 def classify_action(symbol, oi_chg, price_chg, f_price_chg):
     if symbol.endswith("-I"):
@@ -112,7 +104,7 @@ async def process_data(data):
     if symbol.endswith("-I"): future_prices[base_symbol] = new_price
 
     f_price = future_prices.get(base_symbol, 0)
-    if not is_atm_or_itm(symbol, f_price): return # OTM Filter
+    if not is_atm_or_itm(symbol, f_price): return
 
     state = symbol_data_state[symbol]
     if state["oi"] == 0:
@@ -123,10 +115,11 @@ async def process_data(data):
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    if tick_lots >= 50 and symbol not in active_watches: # 50-lot trigger
+    # NEW UPGRADED TRIGGER: 100 Lots
+    if tick_lots >= 100 and symbol not in active_watches:
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
-            "start_f_price": f_price, "end_time": datetime.now() + timedelta(minutes=2) # 2-min watch
+            "start_f_price": f_price, "end_time": datetime.now() + timedelta(minutes=2)
         }
 
     state["oi"], state["price"] = new_oi, new_price
@@ -136,11 +129,11 @@ async def process_data(data):
         if datetime.now() >= watch["end_time"]:
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
-            if final_lots >= 50:
+            
+            # NEW CONFIRMATION: 100 Lots
+            if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 action = classify_action(symbol, final_oi_change, price_change, new_price - watch["start_f_price"])
-                
-                # EXACT TELEGRAM DESIGN
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_prices.get(base_symbol, 0):.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
@@ -157,9 +150,8 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                # STARTUP ALERT
-                await send_alert("✅ Scanner Started | Monitoring for OK to BLAST signals with Existing OI.")
-                print(f"✅ Scanner Live | 97 Symbols | 2-Min Watch", flush=True)
+                await send_alert("✅ Scanner Started | Upgraded Trigger: 100 Lots.")
+                print(f"✅ Scanner Live | 100-Lot Trigger Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
