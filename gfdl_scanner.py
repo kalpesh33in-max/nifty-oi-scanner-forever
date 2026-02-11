@@ -16,9 +16,11 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
+# Updated Lot Sizes
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
+# Your verified list of 97 symbols
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE", "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE",
     "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE", "BANKNIFTY24FEB2660300CE", "BANKNIFTY24FEB2660300PE",
@@ -64,18 +66,30 @@ async def send_alert(msg: str):
 
 # =============================== CORE LOGIC ===================================
 def is_acceptable_strike(symbol, future_price):
+    """
+    STRICT DYNAMIC SELECTION:
+    Allows ALL ITM, ATM, and EXACTLY ONE OTM strike.
+    Blocks anything deeper than 1 strike OTM.
+    """
     if symbol.endswith("-I") or future_price == 0: return True
+    
     match = re.search(r'(\d{3,7})(CE|PE)$', symbol)
     if not match: return True
+    
     strike = float(match.group(1))
     is_call = match.group(2) == "CE"
-    if is_call: return strike <= (future_price + 150)
-    else: return strike >= (future_price - 150)
+    
+    # 150 Point Buffer allows exactly one strike (100 pts) out
+    if is_call:
+        return strike <= (future_price + 150) # ITM + ATM + 1 OTM
+    else:
+        return strike >= (future_price - 150) # ITM + ATM + 1 OTM
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
     elif lots >= 300: return "🌟 AWESOME"
-    else: return "✅ VERY GOOD" # Now starts from VERY GOOD for 200+ lots
+    elif lots >= 200: return "✅ VERY GOOD"
+    else: return "👍 GOOD" # Triggered by 100 Lots
 
 def classify_action(symbol, oi_chg, price_chg):
     if symbol.endswith("-I"):
@@ -93,6 +107,7 @@ async def process_data(data):
     global symbol_data_state, active_watches, future_prices
     symbol = data.get("InstrumentIdentifier")
     if not symbol or symbol not in symbol_data_state: return
+    
     new_price, new_oi = data.get("LastTradePrice"), data.get("OpenInterest")
     if new_price is None or new_oi is None: return
 
@@ -102,6 +117,8 @@ async def process_data(data):
     if symbol.endswith("-I"): future_prices[base_symbol] = new_price
 
     f_price = future_prices.get(base_symbol, 0)
+    
+    # DYNAMIC SELECTION CHECK
     if not is_acceptable_strike(symbol, f_price): return 
 
     state = symbol_data_state[symbol]
@@ -109,12 +126,12 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
+    # Trigger: Upgraded to 100-lot tick
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    # UPDATED TRIGGER: 200 Lots
-    if tick_lots >= 200 and symbol not in active_watches:
+    if tick_lots >= 100 and symbol not in active_watches:
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
             "start_f_price": f_price, "end_time": datetime.now() + timedelta(minutes=2)
@@ -128,8 +145,8 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # UPDATED CONFIRMATION: 200 Lots
-            if final_lots >= 200:
+            # Confirmation: 100 Lots
+            if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 action = classify_action(symbol, final_oi_change, price_change)
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
@@ -148,8 +165,8 @@ async def run_scanner():
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | High-Power Trigger: 200 Lots.")
-                print(f"✅ Scanner Live | 200-Lot Trigger Active", flush=True)
+                await send_alert("✅ Scanner Started | 100-Lot Trigger | ITM+ATM+1-OTM Only.")
+                print(f"✅ Scanner Live | Dynamic Strike Filter Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
