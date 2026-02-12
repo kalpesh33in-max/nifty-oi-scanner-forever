@@ -19,7 +19,6 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 75, "HDFCBANK": 550, "ICICIBANK": 700}
 DEFAULT_LOT_SIZE = 75
 
-# Full list of 97 symbols as requested
 SYMBOLS_TO_MONITOR = [
     "BANKNIFTY24FEB2660700CE", "BANKNIFTY24FEB2660700PE", "BANKNIFTY24FEB2660600CE", "BANKNIFTY24FEB2660600PE",
     "BANKNIFTY24FEB2660500CE", "BANKNIFTY24FEB2660500PE", "BANKNIFTY24FEB2660400CE", "BANKNIFTY24FEB2660400PE",
@@ -67,7 +66,8 @@ async def send_alert(msg: str):
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
     elif lots >= 300: return "🌟 AWESOME"
-    else: return "✅ VERY GOOD" # Now starts at VERY GOOD for 200+ lots
+    elif lots >= 200: return "✅ VERY GOOD"
+    else: return "👍 GOOD" # Label for 100-199 lots
 
 def classify_action(symbol, oi_chg, price_chg):
     if symbol.endswith("-I"):
@@ -99,12 +99,12 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    # UPDATED TRIGGER: Starts watch only if tick is >= 200 lots
+    # UPDATED TRIGGER: Starts watch if tick is >= 100 lots
     oi_tick_diff = new_oi - state["oi"]
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
     tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    if tick_lots >= 200 and symbol not in active_watches:
+    if tick_lots >= 100 and symbol not in active_watches:
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
             "end_time": datetime.now() + timedelta(minutes=2)
@@ -118,8 +118,8 @@ async def process_data(data):
             final_oi_change = new_oi - watch["start_oi"]
             final_lots = int(abs(final_oi_change) / lot_size)
             
-            # UPDATED CONFIRMATION: Sends alert only if net change is >= 200 lots
-            if final_lots >= 200:
+            # UPDATED CONFIRMATION: Alert if net change is >= 100 lots
+            if final_lots >= 100:
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 action = classify_action(symbol, final_oi_change, price_change)
                 
@@ -134,17 +134,21 @@ async def run_scanner():
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
                 await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
-                if not json.loads(await websocket.recv()).get("Complete"): 
+                auth_resp = await websocket.recv()
+                if not json.loads(auth_resp).get("Complete"): 
                     await asyncio.sleep(10); continue
+                
                 for sym in SYMBOLS_TO_MONITOR:
                     await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
                 
-                await send_alert("✅ Scanner Started | Monitoring 97 Symbols | 200-Lot Trigger.")
-                print(f"✅ Scanner Live | High-Volume 200-Lot Trigger Active", flush=True)
+                await send_alert("✅ Scanner Started | Monitoring 97 Symbols | 100-Lot Trigger.")
+                print(f"✅ Scanner Live | High-Volume 100-Lot Trigger Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
                     if msg_data.get("MessageType") == "RealtimeResult": await process_data(msg_data)
-        except Exception: await asyncio.sleep(5)
+        except Exception as e: 
+            print(f"Connection Error: {e}")
+            await asyncio.sleep(5)
 
 if __name__ == "__main__": asyncio.run(run_scanner())
