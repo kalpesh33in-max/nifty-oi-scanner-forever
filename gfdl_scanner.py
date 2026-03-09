@@ -8,7 +8,7 @@ import functools
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# ================= CONFIG =================
+# ============================== CONFIGURATION =================================
 API_KEY = os.environ.get("API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -19,7 +19,7 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30}
 DEFAULT_LOT_SIZE = 30
 
-# ================= SYMBOL LIST =================
+
 SYMBOLS_TO_MONITOR = [
 "BANKNIFTY30MAR2655600CE","BANKNIFTY30MAR2655600PE",
 "BANKNIFTY30MAR2655500CE","BANKNIFTY30MAR2655500PE",
@@ -73,8 +73,9 @@ SYMBOLS_TO_MONITOR = [
 "BANKNIFTY-I"
 ]
 
-# ================= STATE =================
-symbol_data_state = {s: {"price":0,"oi":0} for s in SYMBOLS_TO_MONITOR}
+# ============================== STATE =================================
+symbol_data_state = {symbol: {"price": 0, "oi": 0} for symbol in SYMBOLS_TO_MONITOR}
+active_watches = {}
 future_prices = {"BANKNIFTY":0}
 
 def now():
@@ -82,83 +83,119 @@ def now():
 
 async def send_alert(msg):
     loop = asyncio.get_running_loop()
-    params={'chat_id':TELEGRAM_CHAT_ID,'text':msg}
-    await loop.run_in_executor(None,functools.partial(requests.post,TELEGRAM_API_URL,params=params,timeout=10))
+    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg}
+    await loop.run_in_executor(None, functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10))
 
-# ================= DATA PROCESS =================
+# ============================== CORE LOGIC ===================================
+def get_strength_label(lots):
+    if lots >= 400: return "🚀 BLAST 🚀"
+    elif lots >= 300: return "🌟 AWESOME"
+    elif lots >= 200: return "✅ VERY GOOD"
+    else: return "⚡ GOOD"
+
+def classify_action(symbol, oi_chg, price_chg):
+
+    if symbol.endswith("-I"):
+        if oi_chg > 0:
+            return "FUTURE BUY (LONG) 📈" if price_chg >= 0 else "FUTURE SELL (SHORT) 📉"
+        else:
+            return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
+
+    is_call = symbol.endswith("CE")
+
+    if oi_chg > 0:
+        if price_chg >= 0:
+            return "CALL BUY 🔵" if is_call else "PUT BUY 🔴"
+        else:
+            return "CALL WRITER ✍️" if is_call else "PUT WRITER ✍️"
+    else:
+        if price_chg >= 0:
+            return "SHORT COVERING ⤴️"
+        else:
+            return "LONG UNWINDING ⤵️"
+
+
 async def process_data(data):
 
-    symbol=data.get("InstrumentIdentifier")
+    symbol = data.get("InstrumentIdentifier")
 
-    if symbol not in symbol_data_state:
+    if not symbol or symbol not in symbol_data_state:
         return
 
-    print("Tick:",symbol,flush=True)
+    new_price = data.get("LastTradePrice")
+    new_oi = data.get("OpenInterest")
 
-    price=data.get("LastTradePrice")
-    oi=data.get("OpenInterest")
-
-    if price is None or oi is None:
+    if new_price is None or new_oi is None:
         return
 
-    state=symbol_data_state[symbol]
+    base_symbol = "BANKNIFTY"
 
-    if state["oi"]==0:
-        state["oi"]=oi
-        state["price"]=price
+    if symbol.endswith("-I"):
+        future_prices[base_symbol] = new_price
+
+    state = symbol_data_state[symbol]
+
+    if state["oi"] == 0:
+        state["oi"] = new_oi
+        state["price"] = new_price
         return
 
-    oi_change=oi-state["oi"]
+    oi_tick_diff = new_oi - state["oi"]
 
-    lot_size=LOT_SIZES["BANKNIFTY"]
-    lots=int(abs(oi_change)/lot_size)
+    lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
 
-    print(symbol,"OI Change:",oi_change,"Lots:",lots,flush=True)
+    tick_lots = int(abs(oi_tick_diff) / lot_size)
 
-    state["oi"]=oi
-    state["price"]=price
+    # SHORT LOG ONLY WHEN OI CHANGES
+    if oi_tick_diff != 0:
+        print(f"{symbol} OI Change: {oi_tick_diff} Lots: {tick_lots}", flush=True)
 
-# ================= WEBSOCKET =================
+    state["oi"] = new_oi
+    state["price"] = new_price
+
+
 async def run_scanner():
 
     while True:
+
         try:
 
-            print("Connecting WebSocket...",flush=True)
+            async with websockets.connect(WSS_URL) as websocket:
 
-            async with websockets.connect(WSS_URL) as ws:
-
-                await ws.send(json.dumps({
-                    "MessageType":"Authenticate",
-                    "Password":API_KEY
+                await websocket.send(json.dumps({
+                    "MessageType": "Authenticate",
+                    "Password": API_KEY
                 }))
 
-                print("Authenticated",flush=True)
+                auth_resp = await websocket.recv()
+
+                if not json.loads(auth_resp).get("Complete"):
+                    await asyncio.sleep(10)
+                    continue
 
                 for sym in SYMBOLS_TO_MONITOR:
 
-                    await ws.send(json.dumps({
-                        "MessageType":"SubscribeRealtime",
-                        "Exchange":"NFO",
-                        "InstrumentIdentifier":sym
+                    await websocket.send(json.dumps({
+                        "MessageType": "SubscribeRealtime",
+                        "Exchange": "NFO",
+                        "InstrumentIdentifier": sym
                     }))
 
-                    print("Subscribed:",sym,flush=True)
+                await send_alert(f"Scanner Started | {len(SYMBOLS_TO_MONITOR)} Symbols")
 
-                await send_alert("Scanner Started")
+                async for message in websocket:
 
-                async for message in ws:
+                    msg_data = json.loads(message)
 
-                    data=json.loads(message)
-
-                    if data.get("MessageType")=="RealtimeResult":
-                        await process_data(data)
+                    if msg_data.get("MessageType") == "RealtimeResult":
+                        await process_data(msg_data)
 
         except Exception as e:
 
-            print("Connection error:",e)
+            print(f"Connection Error: {e}")
 
             await asyncio.sleep(5)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     asyncio.run(run_scanner())
