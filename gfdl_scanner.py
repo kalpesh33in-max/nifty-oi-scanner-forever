@@ -19,6 +19,7 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessag
 LOT_SIZES = {"BANKNIFTY": 30}
 DEFAULT_LOT_SIZE = 30
 
+
 SYMBOLS_TO_MONITOR = [
 "BANKNIFTY30MAR2655600CE.NFO","BANKNIFTY30MAR2655600PE.NFO",
 "BANKNIFTY30MAR2655500CE.NFO","BANKNIFTY30MAR2655500PE.NFO",
@@ -46,6 +47,28 @@ SYMBOLS_TO_MONITOR = [
 "BANKNIFTY30MAR2653300CE.NFO","BANKNIFTY30MAR2653300PE.NFO",
 "BANKNIFTY30MAR2653200CE.NFO","BANKNIFTY30MAR2653200PE.NFO",
 "BANKNIFTY30MAR2653100CE.NFO","BANKNIFTY30MAR2653100PE.NFO",
+"BANKNIFTY30MAR2655700CE.NFO","BANKNIFTY30MAR2655700PE.NFO",
+"BANKNIFTY30MAR2655800CE.NFO","BANKNIFTY30MAR2655800PE.NFO",
+"BANKNIFTY30MAR2655900CE.NFO","BANKNIFTY30MAR2655900PE.NFO",
+"BANKNIFTY30MAR2656000CE.NFO","BANKNIFTY30MAR2656000PE.NFO",
+"BANKNIFTY30MAR2656100CE.NFO","BANKNIFTY30MAR2656100PE.NFO",
+"BANKNIFTY30MAR2656200CE.NFO","BANKNIFTY30MAR2656200PE.NFO",
+"BANKNIFTY30MAR2656300CE.NFO","BANKNIFTY30MAR2656300PE.NFO",
+"BANKNIFTY30MAR2656400CE.NFO","BANKNIFTY30MAR2656400PE.NFO",
+"BANKNIFTY30MAR2656500CE.NFO","BANKNIFTY30MAR2656500PE.NFO",
+"BANKNIFTY30MAR2656600CE.NFO","BANKNIFTY30MAR2656600PE.NFO",
+"BANKNIFTY30MAR2656700CE.NFO","BANKNIFTY30MAR2656700PE.NFO",
+"BANKNIFTY30MAR2656800CE.NFO","BANKNIFTY30MAR2656800PE.NFO",
+"BANKNIFTY30MAR2656900CE.NFO","BANKNIFTY30MAR2656900PE.NFO",
+"BANKNIFTY30MAR2657000CE.NFO","BANKNIFTY30MAR2657000PE.NFO",
+"BANKNIFTY30MAR2657100CE.NFO","BANKNIFTY30MAR2657100PE.NFO",
+"BANKNIFTY30MAR2657200CE.NFO","BANKNIFTY30MAR2657200PE.NFO",
+"BANKNIFTY30MAR2657300CE.NFO","BANKNIFTY30MAR2657300PE.NFO",
+"BANKNIFTY30MAR2657400CE.NFO","BANKNIFTY30MAR2657400PE.NFO",
+"BANKNIFTY30MAR2657500CE.NFO","BANKNIFTY30MAR2657500PE.NFO",
+"BANKNIFTY30MAR2657600CE.NFO","BANKNIFTY30MAR2657600PE.NFO",
+"BANKNIFTY30MAR2657700CE.NFO","BANKNIFTY30MAR2657700PE.NFO",
+"BANKNIFTY30MAR2657800CE.NFO","BANKNIFTY30MAR2657800PE.NFO",
 "BANKNIFTY30MAR2657900CE.NFO","BANKNIFTY30MAR2657900PE.NFO",
 "BANKNIFTY-I"
 ]
@@ -58,15 +81,13 @@ future_prices = {"BANKNIFTY":0}
 def now():
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
 
+def clean_symbol(symbol):
+    return symbol.replace(".NFO","")
+
 async def send_alert(msg):
     loop = asyncio.get_running_loop()
     params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg}
     await loop.run_in_executor(None, functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10))
-
-# ============================== LOGIC =================================
-
-def clean_symbol(symbol):
-    return symbol.replace(".NFO","")
 
 def get_strength_label(lots):
     if lots >= 400: return "🚀 BLAST 🚀"
@@ -74,35 +95,13 @@ def get_strength_label(lots):
     elif lots >= 200: return "✅ VERY GOOD"
     else: return "⚡ GOOD"
 
-def classify_action(symbol, oi_chg, price_chg):
-
-    if symbol.endswith("-I"):
-        if oi_chg > 0:
-            return "FUTURE BUY 📈" if price_chg >= 0 else "FUTURE SELL 📉"
-        else:
-            return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
-
-    is_call = "CE" in symbol
-
-    if oi_chg > 0:
-        if price_chg >= 0:
-            return "CALL BUY 🔵" if is_call else "PUT BUY 🔴"
-        else:
-            return "CALL WRITER ✍️" if is_call else "PUT WRITER ✍️"
-    else:
-        if price_chg >= 0:
-            return "SHORT COVERING ⤴️"
-        else:
-            return "LONG UNWINDING ⤵️"
-
 async def process_data(data):
 
     symbol = data.get("InstrumentIdentifier")
-
     if symbol not in symbol_data_state:
         return
 
-    print(f"Tick Received: {symbol}", flush=True)
+    print("Tick:", symbol, flush=True)
 
     new_price = data.get("LastTradePrice")
     new_oi = data.get("OpenInterest")
@@ -114,7 +113,6 @@ async def process_data(data):
 
     if symbol.endswith("-I"):
         future_prices[base_symbol] = new_price
-        print(f"Future price updated: {new_price}", flush=True)
 
     state = symbol_data_state[symbol]
 
@@ -122,70 +120,16 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
-    oi_tick_diff = new_oi - state["oi"]
-
-    print(f"{symbol} | OI Change: {oi_tick_diff}", flush=True)
+    oi_change = new_oi - state["oi"]
 
     lot_size = LOT_SIZES.get(base_symbol, DEFAULT_LOT_SIZE)
 
-    tick_lots = int(abs(oi_tick_diff) / lot_size)
+    tick_lots = int(abs(oi_change) / lot_size)
 
-    print(f"{symbol} | Tick Lots: {tick_lots}", flush=True)
-
-    if tick_lots >= 100 and symbol not in active_watches:
-
-        print(f"Watch Started: {symbol}", flush=True)
-
-        active_watches[symbol] = {
-            "start_oi": state["oi"],
-            "start_price": state["price"],
-            "end_time": datetime.now() + timedelta(minutes=2)
-        }
+    print(symbol, "OI Change:", oi_change, "Lots:", tick_lots, flush=True)
 
     state["oi"], state["price"] = new_oi, new_price
 
-    if symbol in active_watches:
-
-        watch = active_watches[symbol]
-
-        if datetime.now() >= watch["end_time"]:
-
-            final_oi_change = new_oi - watch["start_oi"]
-
-            final_lots = int(abs(final_oi_change) / lot_size)
-
-            print(f"Watch Ended: {symbol} | Final Lots: {final_lots}", flush=True)
-
-            if final_lots >= 100:
-
-                print(f"ALERT TRIGGERED {symbol}", flush=True)
-
-                strength = get_strength_label(final_lots)
-
-                price_change = new_price - watch["start_price"]
-
-                action = classify_action(symbol, final_oi_change, price_change)
-
-                msg = (
-f"{strength}\n"
-f"🚨 {action}\n"
-f"Symbol: {clean_symbol(symbol)}\n"
-f"━━━━━━━━━━━━━━━\n"
-f"LOTS: {final_lots}\n"
-f"PRICE: {new_price:.2f}\n"
-f"FUTURE PRICE: {future_prices.get(base_symbol,0):.2f}\n"
-f"━━━━━━━━━━━━━━━\n"
-f"EXISTING OI: {watch['start_oi']:,}\n"
-f"OI CHANGE  : {final_oi_change:+,}\n"
-f"NEW OI     : {new_oi:,}\n"
-f"TIME: {now()}"
-)
-
-                await send_alert(msg)
-
-            del active_watches[symbol]
-
-# ============================== WEBSOCKET =================================
 
 async def run_scanner():
 
@@ -193,20 +137,16 @@ async def run_scanner():
 
         try:
 
-            print("Connecting to WebSocket...", flush=True)
+            print("Connecting WebSocket...", flush=True)
 
-            async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
-
-                print("Authenticating...", flush=True)
+            async with websockets.connect(WSS_URL) as websocket:
 
                 await websocket.send(json.dumps({
                     "MessageType": "Authenticate",
                     "Password": API_KEY
                 }))
 
-                auth_resp = await websocket.recv()
-
-                print("Authentication response:", auth_resp, flush=True)
+                print("Authenticated", flush=True)
 
                 for sym in SYMBOLS_TO_MONITOR:
 
@@ -216,11 +156,9 @@ async def run_scanner():
                         "InstrumentIdentifier": sym
                     }))
 
-                    print(f"Subscribed: {sym}", flush=True)
+                    print("Subscribed:", sym, flush=True)
 
-                await send_alert("✅ Scanner Started | Debug Mode")
-
-                print("Scanner Live and Receiving Data...", flush=True)
+                await send_alert("Scanner Started")
 
                 async for message in websocket:
 
@@ -231,11 +169,9 @@ async def run_scanner():
 
         except Exception as e:
 
-            print("Connection Error:", e, flush=True)
+            print("Connection error:", e)
 
             await asyncio.sleep(5)
-
-# ============================== START =================================
 
 if __name__ == "__main__":
     asyncio.run(run_scanner())
