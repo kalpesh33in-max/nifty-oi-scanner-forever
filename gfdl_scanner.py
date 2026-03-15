@@ -95,28 +95,40 @@ async def update_subscriptions_loop():
     global monitored_symbols, last_atm, active_ws
     while True:
         try:
-            if active_ws and active_ws.open:
-                bnf_price = future_prices.get("BANKNIFTY", 0)
-                if bnf_price > 0:
-                    current_atm = round(bnf_price / 100) * 100
-                    if current_atm != last_atm:
-                        new_symbols = get_atm_range_symbols(bnf_price)
-                        
-                        # 1. Unsubscribe from old ones moving out of range
-                        to_remove = monitored_symbols - new_symbols
-                        for sym in to_remove:
-                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "true", "InstrumentIdentifier": sym}))
-                            if sym in symbol_data_state: del symbol_data_state[sym]
-                        
-                        # 2. Subscribe to new ones coming into range
-                        to_add = new_symbols - monitored_symbols
-                        for sym in to_add:
-                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
-                            if sym not in symbol_data_state: symbol_data_state[sym] = {"price": 0, "oi": 0}
-                        
-                        monitored_symbols = new_symbols
-                        last_atm = current_atm
-                        print(f"🎯 ATM Updated: {current_atm} | Monitoring {len(monitored_symbols)} symbols", flush=True)
+            # Check if websocket exists and is NOT closed
+            if active_ws is not None:
+                is_connected = False
+                try:
+                    # Try different ways to check connection state for library compatibility
+                    if hasattr(active_ws, 'open'):
+                        is_connected = active_ws.open
+                    else:
+                        is_connected = not active_ws.closed
+                except Exception:
+                    is_connected = True # Fallback to true if check fails
+
+                if is_connected:
+                    bnf_price = future_prices.get("BANKNIFTY", 0)
+                    if bnf_price > 0:
+                        current_atm = round(bnf_price / 100) * 100
+                        if current_atm != last_atm:
+                            new_symbols = get_atm_range_symbols(bnf_price)
+                            
+                            # 1. Unsubscribe from old ones moving out of range
+                            to_remove = monitored_symbols - new_symbols
+                            for sym in to_remove:
+                                await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "true", "InstrumentIdentifier": sym}))
+                                if sym in symbol_data_state: del symbol_data_state[sym]
+                            
+                            # 2. Subscribe to new ones coming into range
+                            to_add = new_symbols - monitored_symbols
+                            for sym in to_add:
+                                await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                                if sym not in symbol_data_state: symbol_data_state[sym] = {"price": 0, "oi": 0}
+                            
+                            monitored_symbols = new_symbols
+                            last_atm = current_atm
+                            print(f"🎯 ATM Updated: {current_atm} | Monitoring {len(monitored_symbols)} symbols", flush=True)
         except Exception as e:
             print(f"⚠️ Sub Update Error: {e}")
         
