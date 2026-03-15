@@ -12,70 +12,25 @@ from zoneinfo import ZoneInfo
 API_KEY = os.environ.get("API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") # Needed if repo is Private
+
+# The Raw GitHub URL for your symbol.txt
+GITHUB_SYMBOL_URL = "https://raw.githubusercontent.com/kalpesh33in-max/nifty-oi-scanner-forever/main/symbol.txt"
 
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-# Updated BankNifty Lot Size to 30
 LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 25, "FINNIFTY": 25, "HDFCBANK": 550, "ICICIBANK": 700, "AXISBANK": 625, "SBIN": 750}
 DEFAULT_LOT_SIZE = 30
 
-# Symbol List: 53400 to 58000 (CE and PE) for 30MAR26 Expiry
-SYMBOLS_TO_MONITOR = [
-    "BANKNIFTY30MAR2653400CE", "BANKNIFTY30MAR2653400PE",
-    "BANKNIFTY30MAR2653500CE", "BANKNIFTY30MAR2653500PE",
-    "BANKNIFTY30MAR2653600CE", "BANKNIFTY30MAR2653600PE",
-    "BANKNIFTY30MAR2653700CE", "BANKNIFTY30MAR2653700PE",
-    "BANKNIFTY30MAR2653800CE", "BANKNIFTY30MAR2653800PE",
-    "BANKNIFTY30MAR2653900CE", "BANKNIFTY30MAR2653900PE",
-    "BANKNIFTY30MAR2654000CE", "BANKNIFTY30MAR2654000PE",
-    "BANKNIFTY30MAR2654100CE", "BANKNIFTY30MAR2654100PE",
-    "BANKNIFTY30MAR2654200CE", "BANKNIFTY30MAR2654200PE",
-    "BANKNIFTY30MAR2654300CE", "BANKNIFTY30MAR2654300PE",
-    "BANKNIFTY30MAR2654400CE", "BANKNIFTY30MAR2654400PE",
-    "BANKNIFTY30MAR2654500CE", "BANKNIFTY30MAR2654500PE",
-    "BANKNIFTY30MAR2654600CE", "BANKNIFTY30MAR2654600PE",
-    "BANKNIFTY30MAR2654700CE", "BANKNIFTY30MAR2654700PE",
-    "BANKNIFTY30MAR2654800CE", "BANKNIFTY30MAR2654800PE",
-    "BANKNIFTY30MAR2654900CE", "BANKNIFTY30MAR2654900PE",
-    "BANKNIFTY30MAR2655000CE", "BANKNIFTY30MAR2655000PE",
-    "BANKNIFTY30MAR2655100CE", "BANKNIFTY30MAR2655100PE",
-    "BANKNIFTY30MAR2655200CE", "BANKNIFTY30MAR2655200PE",
-    "BANKNIFTY30MAR2655300CE", "BANKNIFTY30MAR2655300PE",
-    "BANKNIFTY30MAR2655400CE", "BANKNIFTY30MAR2655400PE",
-    "BANKNIFTY30MAR2655500CE", "BANKNIFTY30MAR2655500PE",
-    "BANKNIFTY30MAR2655600CE", "BANKNIFTY30MAR2655600PE",
-    "BANKNIFTY30MAR2655700CE", "BANKNIFTY30MAR2655700PE",
-    "BANKNIFTY30MAR2655800CE", "BANKNIFTY30MAR2655800PE",
-    "BANKNIFTY30MAR2655900CE", "BANKNIFTY30MAR2655900PE",
-    "BANKNIFTY30MAR2656000CE", "BANKNIFTY30MAR2656000PE",
-    "BANKNIFTY30MAR2656100CE", "BANKNIFTY30MAR2656100PE",
-    "BANKNIFTY30MAR2656200CE", "BANKNIFTY30MAR2656200PE",
-    "BANKNIFTY30MAR2656300CE", "BANKNIFTY30MAR2656300PE",
-    "BANKNIFTY30MAR2656400CE", "BANKNIFTY30MAR2656400PE",
-    "BANKNIFTY30MAR2656500CE", "BANKNIFTY30MAR2656500PE",
-    "BANKNIFTY30MAR2656600CE", "BANKNIFTY30MAR2656600PE",
-    "BANKNIFTY30MAR2656700CE", "BANKNIFTY30MAR2656700PE",
-    "BANKNIFTY30MAR2656800CE", "BANKNIFTY30MAR2656800PE",
-    "BANKNIFTY30MAR2656900CE", "BANKNIFTY30MAR2656900PE",
-    "BANKNIFTY30MAR2657000CE", "BANKNIFTY30MAR2657000PE",
-    "BANKNIFTY30MAR2657100CE", "BANKNIFTY30MAR2657100PE",
-    "BANKNIFTY30MAR2657200CE", "BANKNIFTY30MAR2657200PE",
-    "BANKNIFTY30MAR2657300CE", "BANKNIFTY30MAR2657300PE",
-    "BANKNIFTY30MAR2657400CE", "BANKNIFTY30MAR2657400PE",
-    "BANKNIFTY30MAR2657500CE", "BANKNIFTY30MAR2657500PE",
-    "BANKNIFTY30MAR2657600CE", "BANKNIFTY30MAR2657600PE",
-    "BANKNIFTY30MAR2657700CE", "BANKNIFTY30MAR2657700PE",
-    "BANKNIFTY30MAR2657800CE", "BANKNIFTY30MAR2657800PE",
-    "BANKNIFTY30MAR2657900CE", "BANKNIFTY30MAR2657900PE",
-    "BANKNIFTY30MAR2658000CE", "BANKNIFTY30MAR2658000PE",
-    "BANKNIFTY-I"
-]
-
 # ============================== STATE & UTILITIES =============================
-symbol_data_state = {symbol: {"price": 0, "oi": 0} for symbol in SYMBOLS_TO_MONITOR}
+all_available_symbols = []
+monitored_symbols = set()
+symbol_data_state = {}
 active_watches = {} 
 future_prices = {k: 0 for k in LOT_SIZES.keys()}
+last_atm = 0
+active_ws = None
 
 def now():
     return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
@@ -87,6 +42,85 @@ async def send_alert(msg: str):
         await loop.run_in_executor(None, functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10))
     except Exception as e:
         print(f"⚠️ Telegram Error: {e}")
+
+def load_symbols_from_github():
+    global all_available_symbols
+    headers = {}
+    if GITHUB_TOKEN:
+        headers['Authorization'] = f"token {GITHUB_TOKEN}"
+    
+    try:
+        print("🔄 Fetching symbols from GitHub...")
+        response = requests.get(GITHUB_SYMBOL_URL, headers=headers, timeout=15)
+        if response.status_code == 200:
+            text_data = response.text
+            # Split by comma or newline to handle the format seen in the screenshot
+            raw_symbols = re.split(r'[,\n]+', text_data)
+            cleaned = []
+            for sym in raw_symbols:
+                sym = sym.strip().upper()
+                if sym:
+                    # Remove .NFO and append to cleaned list
+                    sym = sym.replace(".NFO", "")
+                    cleaned.append(sym)
+            all_available_symbols = cleaned
+            print(f"✅ Loaded {len(all_available_symbols)} symbols from GitHub.")
+            return True
+        else:
+            print(f"❌ GitHub Load Error: HTTP {response.status_code}. (If repo is private, ensure GITHUB_TOKEN is set in environment vars)")
+    except Exception as e:
+        print(f"❌ GitHub Load Error: {e}")
+    return False
+
+def get_atm_range_symbols(bnf_price):
+    if bnf_price == 0: return {"BANKNIFTY-I"}
+    atm = round(bnf_price / 100) * 100
+    # Range: ATM +- 23 strikes (2300 points above and below)
+    strikes = range(atm - 2300, atm + 2400, 100)
+    
+    selected = {"BANKNIFTY-I"}
+    strike_list = list(strikes)
+    
+    for sym in all_available_symbols:
+        if "BANKNIFTY" in sym and sym != "BANKNIFTY-I":
+            # Extract strike from symbol using regex
+            match = re.search(r'(\d{5})(CE|PE)$', sym)
+            if match:
+                strike = int(match.group(1))
+                if strike in strike_list:
+                    selected.add(sym)
+    return selected
+
+async def update_subscriptions_loop():
+    global monitored_symbols, last_atm, active_ws
+    while True:
+        try:
+            if active_ws and active_ws.open:
+                bnf_price = future_prices.get("BANKNIFTY", 0)
+                if bnf_price > 0:
+                    current_atm = round(bnf_price / 100) * 100
+                    if current_atm != last_atm:
+                        new_symbols = get_atm_range_symbols(bnf_price)
+                        
+                        # 1. Unsubscribe from old ones moving out of range
+                        to_remove = monitored_symbols - new_symbols
+                        for sym in to_remove:
+                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "true", "InstrumentIdentifier": sym}))
+                            if sym in symbol_data_state: del symbol_data_state[sym]
+                        
+                        # 2. Subscribe to new ones coming into range
+                        to_add = new_symbols - monitored_symbols
+                        for sym in to_add:
+                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                            if sym not in symbol_data_state: symbol_data_state[sym] = {"price": 0, "oi": 0}
+                        
+                        monitored_symbols = new_symbols
+                        last_atm = current_atm
+                        print(f"🎯 ATM Updated: {current_atm} | Monitoring {len(monitored_symbols)} symbols", flush=True)
+        except Exception as e:
+            print(f"⚠️ Sub Update Error: {e}")
+        
+        await asyncio.sleep(60) # Re-check ATM range every 60 seconds
 
 # =============================== CORE LOGIC ===================================
 def get_strength_label(lots):
@@ -149,7 +183,7 @@ async def process_data(data):
                 strength, price_change = get_strength_label(final_lots), new_price - watch["start_price"]
                 action = classify_action(symbol, final_oi_change, price_change)
                 
-                # Maintaining your exact output format
+                # Maintaining your exact existing output format
                 msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_prices.get(base_symbol, 0):.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
@@ -157,25 +191,33 @@ async def process_data(data):
             del active_watches[symbol]
 
 async def run_scanner():
+    global active_ws
+    load_symbols_from_github()
+    asyncio.create_task(update_subscriptions_loop()) # Start the ATM monitor
+
     while True:
         try:
             async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
+                active_ws = websocket
                 await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
                 auth_resp = await websocket.recv()
                 if not json.loads(auth_resp).get("Complete"): 
                     await asyncio.sleep(10); continue
                 
-                for sym in SYMBOLS_TO_MONITOR:
-                    await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                # Initial subscription to Future to get price
+                await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": "BANKNIFTY-I"}))
+                if "BANKNIFTY-I" not in symbol_data_state: symbol_data_state["BANKNIFTY-I"] = {"price": 0, "oi": 0}
+                monitored_symbols.add("BANKNIFTY-I")
                 
-                await send_alert(f"✅ Scanner Started | Monitoring {len(SYMBOLS_TO_MONITOR)} Symbols | 100-Lot Trigger.")
-                print(f"✅ Scanner Live | High-Volume 100-Lot Trigger Active", flush=True)
+                await send_alert("✅ Dynamic ATM Scanner Started | Awaiting Future Price...")
+                print(f"✅ Scanner Live | Dynamic ATM Tracker Active", flush=True)
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
                     if msg_data.get("MessageType") == "RealtimeResult": await process_data(msg_data)
         except Exception as e: 
             print(f"Connection Error: {e}")
+            active_ws = None
             await asyncio.sleep(5)
 
 if __name__ == "__main__": asyncio.run(run_scanner())
