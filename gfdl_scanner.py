@@ -1,63 +1,184 @@
-import requests
+import asyncio
+import websockets
 import json
-import time
+import os
+import re
+import requests
+import functools
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-# Configuration
-SYMBOL = "NIFTY"
-URL = "https://www.nseindia.com/api/option-chain-indices?symbol=" + SYMBOL
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Accept-Language": "en-US,en;q=0.9"
-}
+# ============================== CONFIGURATION =================================
+API_KEY = os.environ.get("API_KEY")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
-def fetch_oi_data():
+GITHUB_SYMBOL_URL = "https://raw.githubusercontent.com/kalpesh33in-max/nifty-oi-scanner-forever/main/symbol.txt"
+WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+# Fixed specifically for BANKNIFTY (30 lots)
+LOT_SIZE = 30
+
+# ============================== STATE & UTILITIES =============================
+all_available_symbols = []
+monitored_symbols = set()
+symbol_data_state = {}
+active_watches = {} 
+future_price = 0
+last_atm = 0
+active_ws = None
+
+def now():
+    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%H:%M:%S")
+
+async def send_alert(msg: str):
+    loop = asyncio.get_running_loop()
+    params = {'chat_id': TELEGRAM_CHAT_ID, 'text': msg}
     try:
-        session = requests.Session()
-        # Hit the home page first to get cookies (Required by NSE)
-        session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
-        response = session.get(URL, headers=HEADERS, timeout=10)
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Error: Status Code {response.status_code}")
-            return None
+        await loop.run_in_executor(None, functools.partial(requests.post, TELEGRAM_API_URL, params=params, timeout=10))
     except Exception as e:
-        print(f"Connection Failed: {e}")
-        return None
+        print(f"⚠️ Telegram Error: {e}")
 
-def scan_markets():
-    data = fetch_oi_data()
-    if not data:
+def load_symbols_from_github():
+    global all_available_symbols
+    headers = {'Authorization': f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+    try:
+        response = requests.get(GITHUB_SYMBOL_URL, headers=headers, timeout=15)
+        if response.status_code == 200:
+            raw_symbols = re.split(r'[,\n]+', response.text)
+            # Filter ONLY BankNifty symbols
+            cleaned = [s.strip().upper().replace(".NFO", "") for s in raw_symbols if "BANKNIFTY" in s.upper()]
+            all_available_symbols = cleaned
+            return True
+    except Exception as e:
+        print(f"❌ GitHub Load Error: {e}")
+    return False
+
+def get_atm_range_symbols(bnf_price):
+    if bnf_price == 0: return {"BANKNIFTY-I"}
+    atm = round(bnf_price / 100) * 100
+    strikes = range(atm - 2300, atm + 2400, 100)
+    
+    selected = {"BANKNIFTY-I"}
+    strike_list = list(strikes)
+    
+    for sym in all_available_symbols:
+        match = re.search(r'(\d{5})(CE|PE)$', sym)
+        if match:
+            strike = int(match.group(1))
+            if strike in strike_list:
+                selected.add(sym)
+    return selected
+
+async def update_subscriptions_loop():
+    global monitored_symbols, last_atm, active_ws
+    while True:
+        try:
+            if active_ws and not active_ws.closed:
+                if future_price > 0:
+                    current_atm = round(future_price / 100) * 100
+                    if current_atm != last_atm:
+                        new_symbols = get_atm_range_symbols(future_price)
+                        
+                        # Unsubscribe old
+                        for sym in (monitored_symbols - new_symbols):
+                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "true", "InstrumentIdentifier": sym}))
+                            if sym in symbol_data_state: del symbol_data_state[sym]
+                        
+                        # Subscribe new
+                        for sym in (new_symbols - monitored_symbols):
+                            await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
+                            symbol_data_state[sym] = {"price": 0, "oi": 0}
+                        
+                        monitored_symbols = new_symbols
+                        last_atm = current_atm
+        except Exception: pass
+        await asyncio.sleep(60)
+
+# =============================== CORE LOGIC ===================================
+def classify_action(symbol, oi_chg, price_chg):
+    if symbol.endswith("-I"):
+        if oi_chg > 0: return "FUTURE BUY (LONG) 📈" if price_chg >= 0 else "FUTURE SELL (SHORT) 📉"
+        return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
+    
+    is_call = symbol.endswith("CE")
+    if oi_chg > 0:
+        if price_chg >= 0: return "CALL BUY 🔵" if is_call else "PUT BUY 🔴"
+        return "CALL WRITER ✍️" if is_call else "PUT WRITER ✍️"
+    else:
+        if price_chg >= 0: return "SHORT COVERING ⤴️"
+        return "LONG UNWINDING ⤵️"
+
+async def process_data(data):
+    global symbol_data_state, active_watches, future_price
+    symbol = data.get("InstrumentIdentifier")
+    if not symbol or symbol not in symbol_data_state: return
+    
+    new_price, new_oi = data.get("LastTradePrice"), data.get("OpenInterest")
+    if new_price is None or new_oi is None: return
+
+    if symbol == "BANKNIFTY-I": future_price = new_price
+
+    state = symbol_data_state[symbol]
+    if state["oi"] == 0:
+        state["oi"], state["price"] = new_oi, new_price
         return
 
-    # Extracting the list of option data records
-    records = data.get('records', {}).get('data', [])
-    
-    # --- THIS IS THE SECTION THAT CRASHED IN YOUR SCREENSHOT ---
-    # Line 102: The 'for' loop
-    for entry in records:
-        # Line 103: MUST BE INDENTED (4 spaces)
-        # Match symbols containing the strike and calculate PCR/OI
-        strike_price = entry.get('strikePrice')
-        expiry_date = entry.get('expiryDate')
-        
-        ce_data = entry.get('CE', {})
-        pe_data = entry.get('PE', {})
-        
-        ce_oi = ce_data.get('openInterest', 0)
-        pe_oi = pe_data.get('openInterest', 0)
-        
-        # Simple Logic: Identify high OI strikes
-        if ce_oi > 50000 or pe_oi > 50000:
-            print(f"Strike: {strike_price} | Expiry: {expiry_date}")
-            print(f"  CE OI: {ce_oi} | PE OI: {pe_oi}")
-    # --- END OF FIXED SECTION ---
+    # Trigger logic: Starts watch if tick is >= 100 lots
+    oi_tick_diff = new_oi - state["oi"]
+    tick_lots = int(abs(oi_tick_diff) / LOT_SIZE)
 
-if __name__ == "__main__":
-    print("Starting Nifty OI Scanner...")
+    if tick_lots >= 100 and symbol not in active_watches:
+        active_watches[symbol] = {
+            "start_oi": state["oi"], "start_price": state["price"],
+            "end_time": datetime.now() + timedelta(minutes=2)
+        }
+
+    state["oi"], state["price"] = new_oi, new_price
+
+    if symbol in active_watches:
+        watch = active_watches[symbol]
+        if datetime.now() >= watch["end_time"]:
+            final_oi_change = new_oi - watch["start_oi"]
+            final_lots = int(abs(final_oi_change) / LOT_SIZE)
+            
+            if final_lots >= 100:
+                strength = "🚀 BLAST 🚀" if final_lots >= 400 else "🌟 AWESOME" if final_lots >= 300 else "✅ VERY GOOD"
+                price_change = new_price - watch["start_price"]
+                action = classify_action(symbol, final_oi_change, price_change)
+                
+                msg = (f"{strength}\n🚨 {action}\nSymbol: {symbol}\n━━━━━━━━━━━━━━━\nLOTS: {final_lots}\n"
+                       f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_price:.2f}\n"
+                       f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
+                await send_alert(msg)
+            del active_watches[symbol]
+
+async def run_scanner():
+    global active_ws
+    load_symbols_from_github()
+    asyncio.create_task(update_subscriptions_loop())
+
     while True:
-        scan_markets()
-        print("Scan complete. Waiting 60 seconds...")
-        time.sleep(60) # Scan every minute
+        try:
+            async with websockets.connect(WSS_URL, ping_interval=20, ping_timeout=20) as websocket:
+                active_ws = websocket
+                await websocket.send(json.dumps({"MessageType": "Authenticate", "Password": API_KEY}))
+                await websocket.recv()
+                
+                # Initial subscription to BankNifty Future
+                await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": "BANKNIFTY-I"}))
+                symbol_data_state["BANKNIFTY-I"] = {"price": 0, "oi": 0}
+                monitored_symbols.add("BANKNIFTY-I")
+                
+                await send_alert("✅ BANKNIFTY Dynamic Scanner Started")
+                
+                async for message in websocket:
+                    msg_data = json.loads(message)
+                    if msg_data.get("MessageType") == "RealtimeResult": await process_data(msg_data)
+        except Exception:
+            active_ws = None
+            await asyncio.sleep(5)
+
+if __name__ == "__main__": asyncio.run(run_scanner())
