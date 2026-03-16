@@ -20,7 +20,7 @@ GITHUB_SYMBOL_URL = "https://raw.githubusercontent.com/kalpesh33in-max/nifty-oi-
 WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
-# Strictly BANKNIFTY
+# Strictly BANKNIFTY per request
 LOT_SIZE = 30 
 
 # ============================== STATE & UTILITIES =============================
@@ -65,6 +65,7 @@ def load_symbols_from_github():
 def get_atm_range_symbols(bnf_price):
     if bnf_price == 0: return {"BANKNIFTY-I"}
     atm = round(bnf_price / 100) * 100
+    # Range: ATM +- 23 strikes
     strikes = range(atm - 2300, atm + 2400, 100)
     
     selected = {"BANKNIFTY-I"}
@@ -82,18 +83,20 @@ async def update_subscriptions_loop():
     global monitored_symbols, last_atm, active_ws
     while True:
         try:
-            # Fixed the 'closed' attribute error by checking state correctly
-            if active_ws and active_ws.open:
+            # FIXED: Correct way to check if connection is open across library versions
+            if active_ws and hasattr(active_ws, 'state') and str(active_ws.state).split('.')[-1] == 'OPEN':
                 if future_price > 0:
                     current_atm = round(future_price / 100) * 100
                     if current_atm != last_atm:
                         new_symbols = get_atm_range_symbols(future_price)
                         
+                        # Unsubscribe old symbols
                         to_remove = monitored_symbols - new_symbols
                         for sym in to_remove:
                             await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "true", "InstrumentIdentifier": sym}))
                             if sym in symbol_data_state: del symbol_data_state[sym]
                         
+                        # Subscribe to new symbols
                         to_add = new_symbols - monitored_symbols
                         for sym in to_add:
                             await active_ws.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": sym}))
@@ -111,7 +114,7 @@ async def update_subscriptions_loop():
 def classify_action(symbol, oi_chg, price_chg):
     if symbol.endswith("-I"):
         if oi_chg > 0: return "FUTURE BUY (LONG) 📈" if price_chg >= 0 else "FUTURE SELL (SHORT) 📉"
-        else: return "SHORT COVERING ↗️" if price_change >= 0 else "LONG UNWINDING ↘️"
+        else: return "SHORT COVERING ↗️" if price_chg >= 0 else "LONG UNWINDING ↘️"
     
     is_call = symbol.endswith("CE")
     if oi_chg > 0:
@@ -137,11 +140,12 @@ async def process_data(data):
         state["oi"], state["price"] = new_oi, new_price
         return
 
+    # Trigger logic: Starts watch if tick is >= 100 lots
     oi_tick_diff = new_oi - state["oi"]
     tick_lots = int(abs(oi_tick_diff) / LOT_SIZE)
 
     if tick_lots >= 100 and symbol not in active_watches:
-        print(f"⚡ [{now()}] Watch Started: {symbol} | Tick: {tick_lots} Lots", flush=True)
+        print(f"⚡ [{now()}] Alert Watch Started: {symbol} | Tick: {tick_lots} Lots", flush=True)
         active_watches[symbol] = {
             "start_oi": state["oi"], "start_price": state["price"],
             "end_time": datetime.now() + timedelta(minutes=2)
@@ -164,7 +168,7 @@ async def process_data(data):
                        f"PRICE: {new_price:.2f} ({'▲' if price_change >= 0 else '▼'})\nFUTURE PRICE: {future_price:.2f}\n"
                        f"━━━━━━━━━━━━━━━\nEXISTING OI: {watch['start_oi']:,}\nOI CHANGE  : {final_oi_change:+,d}\nNEW OI     : {new_oi:,}\nTIME: {now()}")
                 
-                print(f"📢 [{now()}] ALERT SENT: {symbol}", flush=True)
+                print(f"📢 [{now()}] ALERT SENT: {symbol} ({final_lots} Lots)", flush=True)
                 await send_alert(msg)
             del active_watches[symbol]
 
@@ -182,26 +186,28 @@ async def run_scanner():
                 auth_resp = await websocket.recv()
                 
                 if not json.loads(auth_resp).get("Complete"): 
-                    print(f"❌ [{now()}] Auth Failed", flush=True)
+                    print(f"❌ [{now()}] Authentication Failed.", flush=True)
                     await asyncio.sleep(10); continue
                 
-                print(f"🔑 [{now()}] Authenticated.", flush=True)
+                print(f"🔑 [{now()}] Authenticated Successfully.", flush=True)
+                
+                # Subscribe to Future to get price
                 await websocket.send(json.dumps({"MessageType": "SubscribeRealtime", "Exchange": "NFO", "Unsubscribe": "false", "InstrumentIdentifier": "BANKNIFTY-I"}))
                 symbol_data_state["BANKNIFTY-I"] = {"price": 0, "oi": 0}
                 monitored_symbols.add("BANKNIFTY-I")
                 
-                print(f"✅ [{now()}] Scanner Live.", flush=True)
-                await send_alert("✅ BANKNIFTY Scanner Started")
+                print(f"✅ [{now()}] Scanner Live | Dynamic BANKNIFTY Tracker Active", flush=True)
+                await send_alert("✅ BANKNIFTY Scanner Started Successfully")
                 
                 async for message in websocket:
                     msg_data = json.loads(message)
                     if msg_data.get("MessageType") == "RealtimeResult": 
                         await process_data(msg_data)
         except Exception as e: 
-            print(f"❌ [{now()}] Error: {e}", flush=True)
+            print(f"❌ [{now()}] Connection Error: {e}", flush=True)
             active_ws = None
             await asyncio.sleep(5)
 
 if __name__ == "__main__": 
-    print(f"🚀 [{now()}] Initializing...", flush=True)
+    print(f"🚀 [{now()}] Initializing Scanner...", flush=True)
     asyncio.run(run_scanner())
