@@ -1,103 +1,63 @@
-import asyncio
-import websockets
-import json
-import os
-import re
 import requests
-from datetime import datetime
-from zoneinfo import ZoneInfo
+import json
+import time
 
-# ============================== CONFIGURATION =================================
-API_KEY = os.environ.get("API_KEY")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Configuration
+SYMBOL = "NIFTY"
+URL = "https://www.nseindia.com/api/option-chain-indices?symbol=" + SYMBOL
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9"
+}
 
-# Raw GitHub URL for symbol.txt
-GITHUB_SYMBOL_URL = "https://raw.githubusercontent.com/kalpesh33in-max/nifty-oi-scanner-forever/main/symbol.txt"
-
-WSS_URL = "wss://nimblewebstream.lisuns.com:4576/"
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-
-# Updated Lot Sizes
-LOT_SIZES = {"BANKNIFTY": 30, "NIFTY": 25, "FINNIFTY": 25}
-OI_SURGE_THRESHOLD = 200  # Number of lots for an alert
-
-# ============================== STATE & UTILITIES =============================
-all_available_symbols = []
-monitored_symbols = set()
-symbol_data_state = {}
-future_prices = {"BANKNIFTY": 0}
-active_ws = None
-
-async def send_alert(message):
-    print(f"ALERT: {message}")
+def fetch_oi_data():
     try:
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
-        requests.post(TELEGRAM_API_URL, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Telegram Error: {e}")
-
-async def fetch_symbols_from_github():
-    global all_available_symbols
-    try:
-        print("Fetching symbol list from GitHub...")
-        response = requests.get(GITHUB_SYMBOL_URL, timeout=10)
+        session = requests.Session()
+        # Hit the home page first to get cookies (Required by NSE)
+        session.get("https://www.nseindia.com", headers=HEADERS, timeout=10)
+        response = session.get(URL, headers=HEADERS, timeout=10)
+        
         if response.status_code == 200:
-            # Clean up formatting: split by comma, strip spaces and newlines
-            raw_symbols = response.text.replace('\n', '').split(',')
-            all_available_symbols = [s.strip() for s in raw_symbols if s.strip()]
-            print(f"Successfully loaded {len(all_available_symbols)} symbols.")
+            return response.json()
         else:
-            print(f"Failed to fetch symbols. Status: {response.status_code}")
+            print(f"Error: Status Code {response.status_code}")
+            return None
     except Exception as e:
-        print(f"Error loading symbols: {e}")
+        print(f"Connection Failed: {e}")
+        return None
 
-# ============================== CORE LOGIC ====================================
-
-async def process_data(msg_data):
-    symbol = msg_data.get("Symbol")
-    price = msg_data.get("LastPrice", 0)
-    oi = msg_data.get("OpenInterest", 0)
-
-    # 1. Catch Future Price to drive ATM logic
-    if symbol == "BANKNIFTY-I":
-        future_prices["BANKNIFTY"] = price
+def scan_markets():
+    data = fetch_oi_data()
+    if not data:
         return
 
-    # 2. Process Option Data
-    if symbol not in symbol_data_state:
-        symbol_data_state[symbol] = {"oi": oi, "price": price}
-        return
-
-    state = symbol_data_state[symbol]
-    old_oi = state["oi"]
+    # Extracting the list of option data records
+    records = data.get('records', {}).get('data', [])
     
-    # Logic for OI Change
-    oi_diff = oi - old_oi
-    lot_size = LOT_SIZES.get("BANKNIFTY", 30)
-    
-    if abs(oi_diff) >= (OI_SURGE_THRESHOLD * lot_size):
-        direction = "📈 OI SURGE" if oi_diff > 0 else "📉 OI DROP"
-        msg = (f"<b>{direction}</b>\n"
-               f"Symbol: {symbol}\n"
-               f"Price: {price}\n"
-               f"OI Change: {oi_diff // lot_size} Lots")
-        await send_alert(msg)
-        state["oi"] = oi  # Update base to avoid repeat alerts for same surge
+    # --- THIS IS THE SECTION THAT CRASHED IN YOUR SCREENSHOT ---
+    # Line 102: The 'for' loop
+    for entry in records:
+        # Line 103: MUST BE INDENTED (4 spaces)
+        # Match symbols containing the strike and calculate PCR/OI
+        strike_price = entry.get('strikePrice')
+        expiry_date = entry.get('expiryDate')
+        
+        ce_data = entry.get('CE', {})
+        pe_data = entry.get('PE', {})
+        
+        ce_oi = ce_data.get('openInterest', 0)
+        pe_oi = pe_data.get('openInterest', 0)
+        
+        # Simple Logic: Identify high OI strikes
+        if ce_oi > 50000 or pe_oi > 50000:
+            print(f"Strike: {strike_price} | Expiry: {expiry_date}")
+            print(f"  CE OI: {ce_oi} | PE OI: {pe_oi}")
+    # --- END OF FIXED SECTION ---
 
-async def update_subscriptions_loop():
-    global monitored_symbols, active_ws
+if __name__ == "__main__":
+    print("Starting Nifty OI Scanner...")
     while True:
-        await asyncio.sleep(15)  # Check for new ATM every 15 seconds
-        
-        bn_price = future_prices.get("BANKNIFTY", 0)
-        if bn_price == 0 or not all_available_symbols or not active_ws:
-            continue
-
-        # Calculate ATM and Range (+/- 10 strikes)
-        atm_strike = round(bn_price / 100) * 100
-        selected_strikes = [atm_strike + (i * 100) for i in range(-10, 11)]
-        
-        new_watches = set()
-        for strike in selected_strikes:
-            # Match symbols containing the strike and
+        scan_markets()
+        print("Scan complete. Waiting 60 seconds...")
+        time.sleep(60) # Scan every minute
